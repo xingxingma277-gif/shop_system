@@ -1,0 +1,60 @@
+:root {
+  --app-bg: #f6f7fb;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--app-bg);
+}
+
+.app-shell {
+  height: 100vh;
+}
+
+.aside {
+  background: #fff;
+  border-right: 1px solid #ebeef5;
+}
+
+.logo {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-weight: 700;
+}
+
+.header {
+  background: #fff;
+  border-bottom: 1px solid #ebeef5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.main {
+  padding: 16px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.muted {
+  color: #909399;
+  font-size: 12px;
+}
+
+.money {
+  font-weight: 700;
+}
+
+.mb-12 {
+  margin-bottom: 12px;
+}
