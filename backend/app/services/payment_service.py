@@ -1,13 +1,16 @@
 from datetime import datetime
-from typing import Optional, List, Tuple
+from typing import Optional, List
 
 from sqlalchemy import func
 from sqlmodel import Session, select
 
+from app.core.errors import BadRequestError, NotFoundError
 from app.core.time import utc_now
-from app.models import Payment, Sale, Customer
+from app.models import Customer, Payment, Sale
+from app.services.sale_service import get_sale, recompute_sale_payment
 
-_ALLOWED_METHODS = {"现金", "微信", "支付宝", "转账", "其他"}
+_ALLOWED_METHODS = {"cash", "wechat", "alipay", "bank", "transfer", "other", "现金", "微信", "支付宝", "银行卡", "转账", "其他"}
+_ALLOWED_PAY_TYPES = {"paid_full", "credit", "partial"}
 
 
 def _parse_iso_dt(dt_str: Optional[str]) -> datetime:
@@ -16,49 +19,104 @@ def _parse_iso_dt(dt_str: Optional[str]) -> datetime:
     return datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
 
 
-def get_sale_paid_amount(session: Session, sale_id: int) -> float:
-    amt = session.exec(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.sale_id == sale_id)).one()
-    return float(amt or 0)
-
-
-def get_sale_balance(session: Session, sale: Sale) -> Tuple[float, float]:
-    paid = get_sale_paid_amount(session, sale.id)
-    balance = round(float(sale.total_amount) - float(paid), 2)
-    return round(paid, 2), balance
-
-
-def calc_status(paid: float, balance: float) -> str:
-    if paid <= 0:
-        return "unpaid"
-    if balance <= 0.000001:
-        return "paid"
-    return "partial"
+def _gen_receipt_no() -> str:
+    return f"RC{utc_now().strftime('%Y%m%d%H%M%S%f')}"
 
 
 def create_payment(session: Session, sale_id: int, amount: float, method: str, paid_at: Optional[str], note: Optional[str]):
     sale = session.get(Sale, sale_id)
     if not sale:
-        raise ValueError("sale_not_found")
-
+        raise NotFoundError("单据不存在")
     if method not in _ALLOWED_METHODS:
-        raise ValueError("invalid_payment_method")
+        raise BadRequestError("付款方式不合法")
 
-    paid, balance = get_sale_balance(session, sale)
-    if amount > balance + 1e-6:
-        raise ValueError("amount_exceeds_balance")
+    if amount <= 0:
+        raise BadRequestError("金额必须大于0")
+    if amount > float(sale.ar_amount) + 1e-6:
+        raise BadRequestError("收款金额不能超过该单未付金额")
 
     payment = Payment(
+        receipt_no=_gen_receipt_no(),
         customer_id=sale.customer_id,
         sale_id=sale.id,
+        pay_type="partial",
         amount=round(float(amount), 2),
         method=method,
         paid_at=_parse_iso_dt(paid_at),
         note=note,
     )
     session.add(payment)
+    session.flush()
+    session.refresh(sale)
+    recompute_sale_payment(session, sale)
     session.commit()
     session.refresh(payment)
     return payment
+
+
+def submit_sale_payment(session: Session, sale_id: int, pay_type: str, method: str, amount: Optional[float], note: Optional[str]):
+    sale = session.get(Sale, sale_id)
+    if not sale:
+        raise NotFoundError("单据不存在")
+    if pay_type not in _ALLOWED_PAY_TYPES:
+        raise BadRequestError("pay_type 不合法")
+    if method not in _ALLOWED_METHODS:
+        raise BadRequestError("method 不合法")
+
+    pay_amount = 0.0
+    if pay_type == "paid_full":
+        pay_amount = float(sale.ar_amount)
+    elif pay_type == "credit":
+        pay_amount = 0.0
+    else:
+        pay_amount = float(amount or 0)
+
+    created = None
+    if pay_amount > 0:
+        created = Payment(
+            receipt_no=_gen_receipt_no(),
+            customer_id=sale.customer_id,
+            sale_id=sale.id,
+            pay_type=pay_type,
+            amount=round(pay_amount, 2),
+            method=method,
+            paid_at=utc_now(),
+            note=note,
+        )
+        session.add(created)
+        session.flush()
+
+    session.refresh(sale)
+    recompute_sale_payment(session, sale)
+    session.commit()
+    updated_sale = get_sale(session, sale.id)
+
+    if created:
+        session.refresh(created)
+        payment_payload = {
+            "id": created.id,
+            "receipt_no": created.receipt_no,
+            "sale_id": created.sale_id,
+            "customer_id": created.customer_id,
+            "pay_type": created.pay_type,
+            "amount": created.amount,
+            "method": created.method,
+            "paid_at": created.paid_at.isoformat(),
+            "note": created.note,
+        }
+    else:
+        payment_payload = {
+            "id": None,
+            "receipt_no": None,
+            "sale_id": sale.id,
+            "customer_id": sale.customer_id,
+            "pay_type": pay_type,
+            "amount": 0,
+            "method": method,
+            "paid_at": utc_now().isoformat(),
+            "note": note,
+        }
+    return updated_sale, payment_payload
 
 
 def list_payments(session: Session, customer_id: Optional[int], sale_id: Optional[int], page: int, page_size: int):
@@ -77,13 +135,63 @@ def list_payments(session: Session, customer_id: Optional[int], sale_id: Optiona
     for c in conds:
         stmt = stmt.where(c)
 
-    stmt = (
-        stmt.order_by(Payment.paid_at.desc(), Payment.id.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
+    stmt = stmt.order_by(Payment.paid_at.desc(), Payment.id.desc()).offset((page - 1) * page_size).limit(page_size)
     items = session.exec(stmt).all()
     return items, int(total)
+
+
+def list_sale_payments(session: Session, sale_id: int):
+    sale = session.get(Sale, sale_id)
+    if not sale:
+        raise NotFoundError("单据不存在")
+    rows = session.exec(select(Payment).where(Payment.sale_id == sale_id).order_by(Payment.paid_at.desc(), Payment.id.desc())).all()
+    return [
+        {
+            "id": p.id,
+            "receipt_no": p.receipt_no,
+            "sale_id": p.sale_id,
+            "amount": p.amount,
+            "method": p.method,
+            "pay_type": p.pay_type,
+            "paid_at": p.paid_at.isoformat(),
+            "note": p.note,
+        }
+        for p in rows
+    ]
+
+
+def list_customer_payments(session: Session, customer_id: int, *, page: int, page_size: int, start_date: Optional[str], end_date: Optional[str]):
+    customer = session.get(Customer, customer_id)
+    if not customer:
+        raise NotFoundError("客户不存在")
+    start_dt = _parse_iso_dt(start_date) if start_date else None
+    end_dt = _parse_iso_dt(end_date) if end_date else None
+
+    stmt = select(Payment, Sale).join(Sale, Sale.id == Payment.sale_id).where(Payment.customer_id == customer_id)
+    if start_dt:
+        stmt = stmt.where(Payment.paid_at >= start_dt)
+    if end_dt:
+        stmt = stmt.where(Payment.paid_at <= end_dt)
+
+    all_rows = session.exec(stmt.order_by(Payment.paid_at.desc(), Payment.id.desc())).all()
+    total = len(all_rows)
+    rows = all_rows[(page - 1) * page_size : page * page_size]
+
+    items = [
+        {
+            "id": p.id,
+            "receipt_no": p.receipt_no,
+            "sale_id": p.sale_id,
+            "sale_no": s.sale_no,
+            "amount": p.amount,
+            "method": p.method,
+            "pay_type": p.pay_type,
+            "paid_at": p.paid_at.isoformat(),
+            "note": p.note,
+        }
+        for (p, s) in rows
+    ]
+    return items, total
 
 
 def batch_apply(
@@ -98,47 +206,43 @@ def batch_apply(
 ):
     customer = session.get(Customer, customer_id)
     if not customer:
-        raise ValueError("customer_not_found")
+        raise NotFoundError("客户不存在")
 
     if method not in _ALLOWED_METHODS:
-        raise ValueError("invalid_payment_method")
+        raise BadRequestError("付款方式不合法")
 
     sales = session.exec(select(Sale).where(Sale.customer_id == customer_id, Sale.id.in_(sale_ids))).all()
     if not sales:
-        raise ValueError("no_sales_found")
+        raise NotFoundError("未找到可结算单据")
 
-    sale_rows = []
-    for s in sales:
-        paid, bal = get_sale_balance(session, s)
-        if bal > 0.000001:
-            sale_rows.append((s, paid, bal))
-
+    sale_rows = [(s, float(s.ar_amount)) for s in sales if float(s.ar_amount) > 0.000001]
     if not sale_rows:
-        raise ValueError("all_sales_already_paid")
+        raise BadRequestError("所选单据均已结清")
 
-    sale_rows.sort(key=lambda x: (x[0].sale_date, x[0].id))  # FIFO
-
-    total_balance = sum(b for _, _, b in sale_rows)
+    sale_rows.sort(key=lambda x: (x[0].sale_date, x[0].id))
+    total_balance = sum(b for _, b in sale_rows)
     if total_amount > total_balance + 1e-6:
-        raise ValueError("amount_exceeds_total_balance")
+        raise BadRequestError("收款金额超过所选单据总欠款")
 
     remaining = round(float(total_amount), 2)
     paid_at_dt = _parse_iso_dt(paid_at)
+    receipt_no = _gen_receipt_no()
 
     allocations = []
     created = 0
 
-    for s, paid, bal in sale_rows:
+    for s, bal in sale_rows:
         if remaining <= 0:
             break
-        apply_amt = min(bal, remaining)
-        apply_amt = round(float(apply_amt), 2)
+        apply_amt = round(float(min(bal, remaining)), 2)
         if apply_amt <= 0:
             continue
 
         p = Payment(
+            receipt_no=receipt_no,
             customer_id=customer_id,
             sale_id=s.id,
+            pay_type="partial",
             amount=apply_amt,
             method=method,
             paid_at=paid_at_dt,
@@ -146,23 +250,86 @@ def batch_apply(
         )
         session.add(p)
         session.flush()
-        created += 1
 
-        after_paid = round(paid + apply_amt, 2)
-        after_balance = round(float(s.total_amount) - after_paid, 2)
-        after_status = calc_status(after_paid, after_balance)
+        session.refresh(s)
+        recompute_sale_payment(session, s)
 
         allocations.append(
             {
                 "sale_id": s.id,
+                "sale_no": s.sale_no,
                 "applied_amount": apply_amt,
-                "after_paid_amount": after_paid,
-                "after_balance": after_balance,
-                "after_status": after_status,
+                "after_paid_amount": s.paid_amount,
+                "after_balance": s.ar_amount,
+                "after_status": s.payment_status,
             }
         )
-
+        created += 1
         remaining = round(remaining - apply_amt, 2)
+
+    session.commit()
+    return created, allocations
+
+
+def allocate_customer_receipt(session: Session, *, customer_id: int, method: str, amount: float, note: Optional[str], allocate_mode: str = "oldest_first"):
+    if allocate_mode != "oldest_first":
+        raise BadRequestError("目前仅支持 oldest_first")
+    if amount <= 0:
+        raise BadRequestError("金额必须大于0")
+    customer = session.get(Customer, customer_id)
+    if not customer:
+        raise NotFoundError("客户不存在")
+    if method not in _ALLOWED_METHODS:
+        raise BadRequestError("付款方式不合法")
+
+    sales = session.exec(
+        select(Sale)
+        .where(Sale.customer_id == customer_id, Sale.ar_amount > 0)
+        .order_by(Sale.sale_date.asc(), Sale.id.asc())
+    ).all()
+    if not sales:
+        raise BadRequestError("该客户无未结清单据")
+
+    receipt_no = _gen_receipt_no()
+    remaining = round(float(amount), 2)
+    allocations = []
+    created = 0
+    for s in sales:
+        if remaining <= 0:
+            break
+        due = float(s.ar_amount)
+        applied = round(min(due, remaining), 2)
+        if applied <= 0:
+            continue
+        pay = Payment(
+            receipt_no=receipt_no,
+            customer_id=customer_id,
+            sale_id=s.id,
+            pay_type="partial",
+            amount=applied,
+            method=method,
+            paid_at=utc_now(),
+            note=note,
+        )
+        session.add(pay)
+        session.flush()
+
+        session.refresh(s)
+        recompute_sale_payment(session, s)
+
+        allocations.append(
+            {
+                "receipt_no": receipt_no,
+                "sale_id": s.id,
+                "sale_no": s.sale_no,
+                "applied_amount": applied,
+                "after_paid_amount": s.paid_amount,
+                "after_balance": s.ar_amount,
+                "after_status": s.payment_status,
+            }
+        )
+        created += 1
+        remaining = round(remaining - applied, 2)
 
     session.commit()
     return created, allocations

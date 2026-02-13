@@ -8,7 +8,6 @@ from app.core.time import utc_now
 
 if TYPE_CHECKING:
     from .customer import Customer
-    from .sale import Sale
 
 
 class CustomerContact(SQLModel, table=True):
@@ -28,5 +27,4 @@ class CustomerContact(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
 
     customer: Mapped[Optional["Customer"]] = Relationship(back_populates="contacts")
-    sales: Mapped[list["Sale"]] = Relationship(back_populates="contact")
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 
 def normalize_page(page: int, page_size: int, *, max_page_size: int = 100):
     """
