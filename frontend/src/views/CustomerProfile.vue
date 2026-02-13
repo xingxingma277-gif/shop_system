@@ -246,6 +246,8 @@ function openRepayDialog() {
   repayForm.note = ''
   repayDialog.value = true
 }
+function onOpenSelect(rows) { selectedSaleIds.value = rows.map((x) => x.id); selectedTotal.value = rows.reduce((s, x) => s + Number(x.balance || 0), 0) }
+function goPayStep() { receipt.amount = Number(selectedTotal.value.toFixed(2)); pickDialog.value = false; payDialog.value = true }
 
 async function submitRepay() {
   if (!repayForm.amount || repayForm.amount <= 0) return ElMessage.warning('请输入还款金额')
