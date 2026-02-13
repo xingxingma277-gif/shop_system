@@ -11,7 +11,7 @@ def upsert_customer(session: Session, name: str, phone: str | None = None, addre
     c = session.exec(select(Customer).where(Customer.name == name)).first()
     if c:
         return c
-    c = Customer(name=name, phone=phone, address=address, is_active=True)
+    c = Customer(type="company", name=name, contact_name=name, phone=phone or "", address=address or "", is_active=True)
     session.add(c)
     session.flush()
     return c
@@ -67,6 +67,18 @@ def run_seed():
         session.commit()
         session.refresh(contact_worker1); session.refresh(contact_worker2); session.refresh(contact_account)
 
+        def gen_sale_no(when):
+            day = when.strftime("%Y%m%d")
+            prefix = f"SO{day}-"
+            last = session.exec(select(Sale).where(Sale.sale_no.like(f"{prefix}%")).order_by(Sale.sale_no.desc()).limit(1)).first()
+            seq = 1
+            if last and last.sale_no and "-" in last.sale_no:
+                try:
+                    seq = int(last.sale_no.split("-")[-1]) + 1
+                except Exception:
+                    seq = 1
+            return f"{prefix}{seq:04d}"
+
         def ensure_sale(customer: Customer, when, note: str, contact: CustomerContact | None, items):
             # 若同日期同备注存在则不重复插入
             exists = session.exec(
@@ -76,6 +88,7 @@ def run_seed():
                 return exists
 
             sale = Sale(
+                sale_no=gen_sale_no(when),
                 customer_id=customer.id,
                 sale_date=when,
                 note=note,
@@ -97,6 +110,7 @@ def run_seed():
                         sale_id=sale.id,
                         product_id=prod.id,
                         qty=qty,
+                        unit_price=price,
                         sold_price=price,
                         line_total=line_total,
                         remark=remark,

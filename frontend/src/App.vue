@@ -18,6 +18,11 @@
           <el-icon><User /></el-icon>
           <span>客户管理</span>
         </el-menu-item>
+
+        <el-menu-item index="/transactions">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>交易记录</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -36,7 +41,7 @@
 
 <script setup>
 import { useRoute } from 'vue-router'
-import { DocumentAdd, Goods, User } from '@element-plus/icons-vue'
+import { DocumentAdd, Goods, User, DataAnalysis } from '@element-plus/icons-vue'
 
 const route = useRoute()
 </script>

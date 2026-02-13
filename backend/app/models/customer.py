@@ -16,12 +16,13 @@ class Customer(SQLModel, table=True):
     __tablename__ = "customer"
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    type: str = Field(default="company", max_length=20, index=True)  # company/personal
     name: str = Field(min_length=1, max_length=100, index=True)
-    phone: Optional[str] = Field(default=None, max_length=50)
-    address: Optional[str] = Field(default=None, max_length=255)
+    contact_name: str = Field(default="", max_length=100)
+    phone: str = Field(default="", max_length=50)
+    address: str = Field(default="", max_length=255)
     is_active: bool = Field(default=True, index=True)
 
-    # ✅ 关键修复：必须有类型注解
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
 
     sales: Mapped[list["Sale"]] = Relationship(back_populates="customer")
