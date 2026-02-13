@@ -1,6 +1,5 @@
 import http from './http'
 
-// Customers.vue 用
 export function listCustomers(params) {
   return http.get('/api/customers', { params }).then((r) => r.data)
 }
@@ -13,7 +12,28 @@ export function updateCustomer(id, data) {
   return http.put(`/api/customers/${id}`, data).then((r) => r.data)
 }
 
-// NewSale.vue 常用：搜索客户（后端支持 q / active_only）
+export function getCustomer(id) {
+  return http.get(`/api/customers/${id}`).then((r) => r.data)
+}
+
+export function deleteCustomer(id) {
+  return http.delete(`/api/customers/${id}`).then((r) => r.data)
+}
+
+export function listBuyers(customerId) {
+  return http.get(`/api/customers/${customerId}/buyers`).then((r) => r.data)
+}
+
+export function createBuyer(customerId, payload) {
+  return http.post(`/api/customers/${customerId}/buyers`, payload).then((r) => r.data)
+}
+
+export function getCustomerProductPriceHistory(customerId, productId, params = {}) {
+  return http
+    .get(`/api/customers/${customerId}/products/${productId}/price_history`, { params })
+    .then((r) => r.data)
+}
+
 export function searchCustomersApi(keyword) {
   return http
     .get('/api/customers', {
@@ -22,6 +42,14 @@ export function searchCustomersApi(keyword) {
     .then((r) => r.data)
 }
 
-// 兼容旧命名（如果你别处用到）
 export const listCustomersApi = listCustomers
-export const getCustomerApi = (id) => http.get(`/api/customers/${id}`).then((r) => r.data)
+export const getCustomerApi = getCustomer
+
+
+export function deleteCustomerCheck(id) {
+  return http.get(`/api/customers/${id}/delete_check`).then((r) => r.data)
+}
+
+export function deleteCustomerRecords(id, payload) {
+  return http.post(`/api/customers/${id}/delete_records`, payload).then((r) => r.data)
+}

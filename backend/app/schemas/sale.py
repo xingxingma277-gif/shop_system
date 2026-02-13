@@ -7,12 +7,15 @@ from sqlmodel import SQLModel, Field
 class SaleItemCreate(SQLModel):
     product_id: int
     qty: float = Field(gt=0)
-    sold_price: float = Field(ge=0)
-    remark: Optional[str] = Field(default=None, max_length=200)
+    unit_price: float = Field(ge=0)
+    note: Optional[str] = None
 
 
 class SaleCreate(SQLModel):
+    sale_no: Optional[str] = None
     customer_id: int
+    buyer_id: Optional[int] = None
+    project: Optional[str] = None
     sale_date: Optional[datetime] = None
     note: Optional[str] = Field(default=None, max_length=500)
     items: List[SaleItemCreate]
@@ -25,29 +28,42 @@ class SaleItemRead(SQLModel):
     sku: Optional[str] = None
     unit: Optional[str] = None
     qty: float
-    sold_price: float
+    unit_price: float
     line_total: float
-    remark: Optional[str] = None
+    note: Optional[str] = None
 
 
 class SaleRead(SQLModel):
     id: int
+    sale_no: str
     customer_id: int
     customer_name: str
+    buyer_id: Optional[int] = None
+    buyer_name: Optional[str] = None
+    project: Optional[str] = None
     sale_date: datetime
     note: Optional[str] = None
     total_amount: float
+    paid_amount: float
+    ar_amount: float
+    payment_status: str
     created_at: datetime
     items: List[SaleItemRead] = []
 
 
 class SaleSummary(SQLModel):
     id: int
+    sale_no: str
     customer_id: int
     customer_name: str
+    buyer_name: Optional[str] = None
+    project: Optional[str] = None
     sale_date: datetime
     note: Optional[str] = None
     total_amount: float
+    paid_amount: float
+    ar_amount: float
+    payment_status: str
 
 
 class SalePage(SQLModel):
@@ -55,3 +71,15 @@ class SalePage(SQLModel):
     total: int
     page: int
     page_size: int
+
+
+class SalePaymentCreate(SQLModel):
+    pay_type: str
+    method: str
+    amount: Optional[float] = None
+    note: Optional[str] = None
+
+
+class SalePaymentSubmitResponse(SQLModel):
+    sale: SaleRead
+    payment: dict
