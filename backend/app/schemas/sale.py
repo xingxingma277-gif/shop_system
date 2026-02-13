@@ -34,6 +34,7 @@ class SaleItemRead(SQLModel):
 
 class SaleRead(SQLModel):
     id: int
+    sale_no: str
     customer_id: int
     customer_name: str
     buyer_id: Optional[int] = None
@@ -51,6 +52,7 @@ class SaleRead(SQLModel):
 
 class SaleSummary(SQLModel):
     id: int
+    sale_no: str
     customer_id: int
     customer_name: str
     buyer_name: Optional[str] = None

@@ -15,6 +15,21 @@ def _compute_payment_status(total_amount: float, paid_amount: float) -> str:
     return "partial"
 
 
+def _generate_sale_no(session: Session, sale_date: datetime) -> str:
+    day = sale_date.strftime("%Y%m%d")
+    prefix = f"SO{day}-"
+    last_no = session.exec(
+        select(Sale.sale_no).where(Sale.sale_no.like(f"{prefix}%")).order_by(Sale.sale_no.desc()).limit(1)
+    ).first()
+    seq = 1
+    if last_no and "-" in last_no:
+        try:
+            seq = int(last_no.split("-")[-1]) + 1
+        except Exception:
+            seq = 1
+    return f"{prefix}{seq:04d}"
+
+
 def create_sale(session: Session, data) -> SaleRead:
     customer = session.get(Customer, data.customer_id)
     if not customer:
@@ -41,14 +56,17 @@ def create_sale(session: Session, data) -> SaleRead:
     if inactive:
         raise BadRequestError(f"以下商品已停用：{', '.join(inactive)}")
 
+    sale_date = data.sale_date or utc_now()
+
     sale = Sale(
+        sale_no=_generate_sale_no(session, sale_date),
         customer_id=data.customer_id,
         buyer_id=data.buyer_id,
         contact_id=data.buyer_id,
         contact_name_snapshot=buyer.name,
         project=data.project,
         project_name=data.project,
-        sale_date=data.sale_date or utc_now(),
+        sale_date=sale_date,
         note=data.note,
         total_amount=0,
         paid_amount=0,
@@ -100,6 +118,7 @@ def list_sales(session: Session, customer_id: int | None, page: int, page_size: 
     items = [
         SaleSummary(
             id=s.id,
+            sale_no=s.sale_no,
             customer_id=s.customer_id,
             customer_name=c.name,
             buyer_name=s.contact_name_snapshot,
@@ -147,6 +166,7 @@ def get_sale(session: Session, sale_id: int) -> SaleRead:
 
     return SaleRead(
         id=sale.id,
+        sale_no=sale.sale_no,
         customer_id=sale.customer_id,
         customer_name=customer.name,
         buyer_id=sale.buyer_id,

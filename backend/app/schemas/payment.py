@@ -43,3 +43,10 @@ class BatchPaymentAllocationRow(BaseModel):
 class BatchPaymentApplyOut(BaseModel):
     created_payments: int
     allocations: List[BatchPaymentAllocationRow]
+
+
+class CustomerReceiptCreate(BaseModel):
+    method: str = Field(default="transfer")
+    amount: float = Field(gt=0)
+    note: Optional[str] = None
+    allocate_mode: str = Field(default="oldest_first")

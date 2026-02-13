@@ -1,13 +1,15 @@
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlmodel import Session
 
 from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_session
 from app.schemas.customer import BuyerCreate, BuyerRead, CustomerCreate, CustomerPage, CustomerRead, CustomerUpdate
-from app.services import buyer_service, customer_service, pricing_service, statement_service
+from app.schemas.payment import CustomerReceiptCreate
+from app.services import buyer_service, customer_service, payment_service, pricing_service, statement_service
 
 router = APIRouter(prefix="/api/customers", tags=["Customers"])
 
@@ -41,17 +43,6 @@ def create_customer(payload: CustomerCreate, session: Session = Depends(get_sess
 
 @router.get("/{customer_id}", response_model=CustomerRead)
 def get_customer_detail(customer_id: int, session: Session = Depends(get_session)):
-    try:
-        return customer_service.get_customer_or_404(session, customer_id)
-    except NotFoundError as exc:
-        raise HTTPException(status_code=404, detail=exc.message)
-
-
-@router.get("/{customer_id}", response_model=CustomerRead)
-def get_customer_detail(
-    customer_id: int,
-    session: Session = Depends(get_session),
-):
     try:
         return customer_service.get_customer_or_404(session, customer_id)
     except NotFoundError as exc:
@@ -95,6 +86,9 @@ def customer_statement(
     page_size: int = Query(20, ge=1, le=100),
     start_date: str | None = Query(None),
     end_date: str | None = Query(None),
+    q: str | None = Query(None),
+    payment_status: str | None = Query(None),
+    sort_by: str = Query("date_desc"),
     session: Session = Depends(get_session),
 ):
     try:
@@ -109,10 +103,56 @@ def customer_statement(
         end_date=end_date,
         page=page,
         page_size=page_size,
+        q=q,
+        payment_status=payment_status,
+        sort_by=sort_by,
     )
     pages = ceil(total / page_size) if page_size else 0
     meta = {"total": int(total), "page": page, "page_size": page_size, "pages": pages}
     return {"items": items, "meta": meta, "summary": summary, "total": int(total), "page": page, "page_size": page_size}
+
+
+@router.get("/{customer_id}/statement/export")
+def export_customer_statement(
+    customer_id: int,
+    start_date: str | None = Query(None),
+    end_date: str | None = Query(None),
+    q: str | None = Query(None),
+    payment_status: str | None = Query(None),
+    sort_by: str = Query("date_desc"),
+    format: str = Query("csv"),
+    session: Session = Depends(get_session),
+):
+    if format != "csv":
+        raise HTTPException(status_code=400, detail="仅支持 csv")
+    content = statement_service.export_statement_csv(
+        session,
+        customer_id=customer_id,
+        start_date=start_date,
+        end_date=end_date,
+        q=q,
+        payment_status=payment_status,
+        sort_by=sort_by,
+    )
+    return PlainTextResponse(content, media_type="text/csv; charset=utf-8")
+
+
+@router.post("/{customer_id}/receipts")
+def create_customer_receipt(customer_id: int, payload: CustomerReceiptCreate, session: Session = Depends(get_session)):
+    try:
+        created, allocations = payment_service.allocate_customer_receipt(
+            session,
+            customer_id=customer_id,
+            method=payload.method,
+            amount=payload.amount,
+            note=payload.note,
+            allocate_mode=payload.allocate_mode,
+        )
+        return {"created_payments": created, "allocations": allocations}
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+    except BadRequestError as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
 
 
 @router.get("/{customer_id}/buyers", response_model=list[BuyerRead])

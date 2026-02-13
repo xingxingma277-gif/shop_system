@@ -20,6 +20,7 @@ class Sale(SQLModel, table=True):
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    sale_no: str = Field(default="", max_length=30, index=True, unique=True)
     customer_id: int = Field(foreign_key="customer.id", index=True)
 
     buyer_id: Optional[int] = Field(default=None, foreign_key="customer_contact.id", index=True)

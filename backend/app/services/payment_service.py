@@ -205,3 +205,65 @@ def batch_apply(
 
     session.commit()
     return created, allocations
+
+
+
+def allocate_customer_receipt(session: Session, *, customer_id: int, method: str, amount: float, note: Optional[str], allocate_mode: str = "oldest_first"):
+    if allocate_mode != "oldest_first":
+        raise BadRequestError("目前仅支持 oldest_first")
+    if amount <= 0:
+        raise BadRequestError("金额必须大于0")
+    customer = session.get(Customer, customer_id)
+    if not customer:
+        raise NotFoundError("客户不存在")
+    if method not in _ALLOWED_METHODS:
+        raise BadRequestError("付款方式不合法")
+
+    sales = session.exec(
+        select(Sale)
+        .where(Sale.customer_id == customer_id, Sale.ar_amount > 0)
+        .order_by(Sale.sale_date.asc(), Sale.id.asc())
+    ).all()
+    if not sales:
+        raise BadRequestError("该客户无未结清单据")
+
+    remaining = round(float(amount), 2)
+    allocations = []
+    created = 0
+    for s in sales:
+        if remaining <= 0:
+            break
+        due = float(s.ar_amount)
+        applied = round(min(due, remaining), 2)
+        if applied <= 0:
+            continue
+        pay = Payment(
+            customer_id=customer_id,
+            sale_id=s.id,
+            pay_type="partial",
+            amount=applied,
+            method=method,
+            paid_at=utc_now(),
+            note=note,
+        )
+        session.add(pay)
+        session.flush()
+
+        session.refresh(s)
+        recompute_sale_payment(session, s)
+
+        allocations.append(
+            {
+                "sale_id": s.id,
+                "sale_no": s.sale_no,
+                "applied_amount": applied,
+                "after_paid_amount": s.paid_amount,
+                "after_balance": s.ar_amount,
+                "after_status": s.payment_status,
+            }
+        )
+        created += 1
+        remaining = round(remaining - applied, 2)
+
+    session.commit()
+    return created, allocations
