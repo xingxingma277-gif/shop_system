@@ -1,7 +1,8 @@
-from sqlmodel import Session, select, col
+from sqlalchemy import func
+from sqlmodel import Session, col, select
 
 from app.core.errors import NotFoundError
-from app.models import Customer, Sale
+from app.models import Customer, Payment, Sale
 from app.schemas.sale import SaleSummary
 from app.services.pagination import paginate
 from app.services.utils import to_update_dict
@@ -55,6 +56,25 @@ def update_customer(session: Session, customer_id: int, data) -> Customer:
     return customer
 
 
+def delete_customer(session: Session, customer_id: int) -> None:
+    customer = session.get(Customer, customer_id)
+    if not customer:
+        raise NotFoundError("客户不存在")
+
+    sale_count = int(
+        session.exec(select(func.count()).select_from(Sale).where(Sale.customer_id == customer_id)).one() or 0
+    )
+    payment_count = int(
+        session.exec(select(func.count()).select_from(Payment).where(Payment.customer_id == customer_id)).one() or 0
+    )
+
+    if sale_count > 0 or payment_count > 0:
+        raise ValueError("customer_has_related_records")
+
+    session.delete(customer)
+    session.commit()
+
+
 def get_customer_or_404(session: Session, customer_id: int) -> Customer:
     customer = session.get(Customer, customer_id)
     if not customer:
@@ -84,3 +104,27 @@ def get_customer_profile(session: Session, customer_id: int, recent_limit: int =
         for s in sales
     ]
     return customer, summaries
+
+
+def get_ar_summary(session: Session, customer_id: int) -> dict:
+    get_customer_or_404(session, customer_id)
+
+    total_sales = float(
+        session.exec(
+            select(func.coalesce(func.sum(Sale.total_amount), 0)).where(Sale.customer_id == customer_id)
+        ).one()
+        or 0
+    )
+
+    total_received = float(
+        session.exec(
+            select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.customer_id == customer_id)
+        ).one()
+        or 0
+    )
+
+    return {
+        "total_sales": round(total_sales, 2),
+        "total_received": round(total_received, 2),
+        "total_ar": round(total_sales - total_received, 2),
+    }

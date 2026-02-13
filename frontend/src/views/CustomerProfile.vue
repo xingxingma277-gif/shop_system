@@ -306,6 +306,7 @@ import { ElMessage } from 'element-plus'
 
 import { useDictsStore } from '../stores/dicts'
 import { getCustomerStatement, getCustomerArSummary } from '../api/customers_ext'
+import { getCustomer } from '../api/customers'
 import { listContacts, createContact, updateContact, toggleContact as apiToggleContact } from '../api/contacts'
 import { createPayment, batchApplyPayments } from '../api/payments'
 
@@ -314,7 +315,7 @@ const dicts = useDictsStore()
 
 const customerId = Number(route.params.id)
 
-const customer = ref(null) // 如果你已有 profile API，可在此加载客户详情；这里不强制
+const customer = ref(null)
 const arSummary = reactive({ total_sales_amount: 0, total_paid_amount: 0, total_balance: 0 })
 
 const activeTab = ref('statement')
@@ -348,11 +349,15 @@ function formatDT(iso) {
   return d.toLocaleString()
 }
 
+async function loadCustomer() {
+  customer.value = await getCustomer(customerId)
+}
+
 async function loadAr() {
   const data = await getCustomerArSummary(customerId)
-  arSummary.total_sales_amount = data.total_sales_amount || 0
-  arSummary.total_paid_amount = data.total_paid_amount || 0
-  arSummary.total_balance = data.total_balance || 0
+  arSummary.total_sales_amount = Number(data.total_sales_amount ?? data.total_sales ?? 0)
+  arSummary.total_paid_amount = Number(data.total_paid_amount ?? data.total_received ?? 0)
+  arSummary.total_balance = Number(data.total_balance ?? data.total_ar ?? 0)
 }
 
 async function loadStatement() {
@@ -365,9 +370,10 @@ async function loadStatement() {
   }
   const data = await getCustomerStatement(customerId, params)
   statement.items = data.items || []
-  statement.total = data.total || 0
-  statement.page = data.page || 1
-  statement.page_size = data.page_size || 20
+  const meta = data.meta || {}
+  statement.total = Number(meta.total ?? data.total ?? 0)
+  statement.page = Number(meta.page ?? data.page ?? 1)
+  statement.page_size = Number(meta.page_size ?? data.page_size ?? 20)
   statement.summary = data.summary || { total_sales_amount: 0, total_paid_amount: 0, total_balance: 0 }
 }
 
@@ -469,11 +475,15 @@ async function submitBatch() {
 const contacts = reactive({ items: [], total: 0, page: 1, page_size: 20 })
 
 async function loadContacts() {
-  const data = await listContacts(customerId, { page: contacts.page, page_size: contacts.page_size })
-  contacts.items = data.items || []
-  contacts.total = data.total || 0
-  contacts.page = data.page || 1
-  contacts.page_size = data.page_size || 20
+  try {
+    const data = await listContacts(customerId, { page: contacts.page, page_size: contacts.page_size })
+    contacts.items = data.items || []
+    contacts.total = data.total || 0
+    contacts.page = data.page || 1
+    contacts.page_size = data.page_size || 20
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '联系人加载失败')
+  }
 }
 
 async function toggleContact(row) {
@@ -533,8 +543,12 @@ async function submitContact() {
 }
 
 onMounted(async () => {
-  // customer 信息如果你已有 /customers/{id}/profile，可在此加载并赋值 customer.value
-  await loadAr()
-  await loadStatement()
+  const results = await Promise.allSettled([loadCustomer(), loadAr(), loadStatement()])
+  const messages = ['客户信息加载失败', '欠款概览加载失败', '对账明细加载失败']
+  results.forEach((res, idx) => {
+    if (res.status === 'rejected') {
+      ElMessage.error(messages[idx])
+    }
+  })
 })
 </script>
