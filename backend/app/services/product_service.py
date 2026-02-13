@@ -1,8 +1,8 @@
-from sqlmodel import Session, select, col
-from sqlalchemy import or_
+from sqlalchemy import func, or_
+from sqlmodel import Session, col, select
 
-from app.core.errors import NotFoundError, BadRequestError
-from app.models import Product
+from app.core.errors import BadRequestError, NotFoundError
+from app.models import Product, SaleItem
 from app.services.pagination import paginate
 from app.services.utils import to_update_dict
 
@@ -83,6 +83,24 @@ def toggle_product_active(session: Session, product_id: int) -> Product:
     session.commit()
     session.refresh(product)
     return product
+
+
+def delete_product(session: Session, product_id: int) -> None:
+    product = session.get(Product, product_id)
+    if not product:
+        raise NotFoundError("商品不存在")
+
+    related_sale_item_count = int(
+        session.exec(
+            select(func.count()).select_from(SaleItem).where(SaleItem.product_id == product_id)
+        ).one()
+        or 0
+    )
+    if related_sale_item_count > 0:
+        raise ValueError("product_has_related_records")
+
+    session.delete(product)
+    session.commit()
 
 
 def get_product_or_404(session: Session, product_id: int) -> Product:
