@@ -7,3 +7,12 @@ export function getCustomerStatement(customerId, params) {
 export function getCustomerArSummary(customerId) {
   return http.get(`/api/customers/${customerId}/ar_summary`).then((r) => r.data)
 }
+
+export function createCustomerReceipt(customerId, payload) {
+  return http.post(`/api/customers/${customerId}/receipts`, payload).then((r) => r.data)
+}
+
+export function exportCustomerStatementUrl(customerId, params = {}) {
+  const query = new URLSearchParams(params)
+  return `${http.defaults.baseURL}/api/customers/${customerId}/statement/export?${query.toString()}`
+}
