@@ -12,9 +12,10 @@ class SaleItemCreate(SQLModel):
 
 
 class SaleCreate(SQLModel):
+    sale_no: Optional[str] = None
     customer_id: int
-    buyer_id: int
-    project: str
+    buyer_id: Optional[int] = None
+    project: Optional[str] = None
     sale_date: Optional[datetime] = None
     note: Optional[str] = Field(default=None, max_length=500)
     items: List[SaleItemCreate]

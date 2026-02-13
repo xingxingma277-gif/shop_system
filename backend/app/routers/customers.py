@@ -155,6 +155,27 @@ def create_customer_receipt(customer_id: int, payload: CustomerReceiptCreate, se
         raise HTTPException(status_code=400, detail=exc.message)
 
 
+
+
+@router.get("/{customer_id}/payments")
+def customer_payments(
+    customer_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    start_date: str | None = Query(None),
+    end_date: str | None = Query(None),
+    session: Session = Depends(get_session),
+):
+    try:
+        items, total = payment_service.list_customer_payments(
+            session, customer_id, page=page, page_size=page_size, start_date=start_date, end_date=end_date
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+    pages = ceil(total / page_size) if page_size else 0
+    return {"items": items, "meta": {"total": total, "page": page, "page_size": page_size, "pages": pages}}
+
+
 @router.get("/{customer_id}/buyers", response_model=list[BuyerRead])
 def get_buyers(customer_id: int, session: Session = Depends(get_session)):
     try:
@@ -175,11 +196,23 @@ def create_buyer(customer_id: int, payload: BuyerCreate, session: Session = Depe
 def customer_product_price_history(
     customer_id: int,
     product_id: int,
-    limit: int = Query(50, ge=1, le=200),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    start_date: str | None = Query(None),
+    end_date: str | None = Query(None),
     session: Session = Depends(get_session),
 ):
     try:
-        items = pricing_service.pricing_history(session, customer_id, product_id, limit=limit)
-        return {"items": items}
+        items, total = pricing_service.pricing_history(
+            session,
+            customer_id,
+            product_id,
+            page=page,
+            page_size=page_size,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        pages = ceil(total / page_size) if page_size else 0
+        return {"items": items, "meta": {"total": total, "page": page, "page_size": page_size, "pages": pages}}
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message)

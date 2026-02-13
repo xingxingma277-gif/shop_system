@@ -24,6 +24,7 @@ def create_payment(payload: PaymentCreate, session: Session = Depends(get_sessio
             "id": p.id,
             "customer_id": p.customer_id,
             "sale_id": p.sale_id,
+            "receipt_no": p.receipt_no,
             "pay_type": p.pay_type,
             "amount": p.amount,
             "method": p.method,

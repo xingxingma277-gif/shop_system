@@ -9,6 +9,11 @@ from app.services import payment_service, sale_service
 router = APIRouter(prefix="/api/sales", tags=["Sales"])
 
 
+@router.get('/next_no')
+def get_next_no(session: Session = Depends(get_session)):
+    return {'sale_no': sale_service.next_sale_no(session)}
+
+
 @router.post("", response_model=SaleRead)
 def create_sale(payload: SaleCreate, session: Session = Depends(get_session)):
     try:
@@ -52,3 +57,12 @@ def submit_sale_payment(sale_id: int, payload: SalePaymentCreate, session: Sessi
         raise HTTPException(status_code=404, detail=exc.message)
     except BadRequestError as exc:
         raise HTTPException(status_code=400, detail=exc.message)
+
+
+@router.get('/{sale_id}/payment_records')
+def sale_payment_records(sale_id: int, session: Session = Depends(get_session)):
+    try:
+        items = payment_service.list_sale_payments(session, sale_id)
+        return {'items': items}
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)

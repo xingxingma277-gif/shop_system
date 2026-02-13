@@ -36,7 +36,7 @@
         <el-button @click="quickDays(7)">近7天</el-button>
         <el-button @click="quickDays(30)">近30天</el-button>
         <el-button @click="thisMonth">本月</el-button>
-        <el-button type="primary" @click="loadStatement">查询</el-button>
+        <el-button type="primary" @click="reloadAll">查询</el-button>
         <el-button @click="exportCsv">导出CSV</el-button>
       </div>
 
@@ -44,13 +44,13 @@
         <el-tab-pane label="公司总账单" name="statement">
           <el-table :data="statement.items" border :height="tableHeight" empty-text="当前筛选无数据">
             <el-table-column prop="sale_no" label="单号" min-width="160" />
-            <el-table-column prop="date" label="日期" min-width="160">
-              <template #default="{ row }">{{ fmt(row.date) }}</template>
-            </el-table-column>
+            <el-table-column prop="date" label="日期" min-width="160"><template #default="{ row }">{{ fmt(row.date) }}</template></el-table-column>
             <el-table-column prop="project" label="项目" min-width="140" />
             <el-table-column prop="buyer_name" label="拿货人" min-width="120" />
             <el-table-column prop="total" label="总额" width="100" />
-            <el-table-column prop="paid" label="已付" width="100" />
+            <el-table-column prop="paid" label="已付" width="120">
+              <template #default="{ row }"><el-button link type="primary" @click="openSalePayments(row)">¥{{ row.paid }}</el-button></template>
+            </el-table-column>
             <el-table-column prop="ar" label="未付" width="100" />
             <el-table-column prop="status" label="状态" width="110">
               <template #default="{ row }">
@@ -63,7 +63,7 @@
           </el-table>
         </el-tab-pane>
 
-        <el-tab-pane label="按拿货人账单" name="buyer">
+        <el-tab-pane label="按拿货人账单" name="buyer" v-if="customer?.type==='company'">
           <el-select v-model="buyerId" placeholder="选择拿货人" style="width:260px;margin-bottom:10px" @change="loadBuyerStatement">
             <el-option v-for="b in buyers" :key="b.id" :value="b.id" :label="b.name" />
           </el-select>
@@ -74,6 +74,18 @@
             <el-table-column prop="total" label="总额" width="100" />
             <el-table-column prop="paid" label="已付" width="100" />
             <el-table-column prop="ar" label="未付" width="100" />
+          </el-table>
+        </el-tab-pane>
+
+        <el-tab-pane label="收款记录" name="payments">
+          <el-table :data="payments.items" border :height="tableHeight" empty-text="当前筛选无数据">
+            <el-table-column prop="paid_at" label="时间" min-width="160"><template #default="{ row }">{{ fmt(row.paid_at) }}</template></el-table-column>
+            <el-table-column prop="amount" label="金额" width="100" />
+            <el-table-column prop="method" label="方式" width="100" />
+            <el-table-column prop="sale_no" label="关联单号" min-width="140" />
+            <el-table-column prop="receipt_no" label="收款批次" min-width="180" />
+            <el-table-column prop="note" label="备注" min-width="160" show-overflow-tooltip />
+            <el-table-column label="分配明细" width="100"><template #default="{ row }"><el-button link @click="openReceiptAlloc(row)">查看</el-button></template></el-table-column>
           </el-table>
         </el-tab-pane>
       </el-tabs>
@@ -95,6 +107,24 @@
         <el-button type="primary" :loading="receipting" @click="submitReceipt">提交</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="paymentsDialog" title="该单收款记录" width="640px">
+      <el-table :data="salePayments" border size="small">
+        <el-table-column prop="paid_at" label="时间" min-width="160"><template #default="{ row }">{{ fmt(row.paid_at) }}</template></el-table-column>
+        <el-table-column prop="amount" label="金额" width="100" />
+        <el-table-column prop="method" label="方式" width="100" />
+        <el-table-column prop="receipt_no" label="批次号" min-width="180" />
+      </el-table>
+    </el-dialog>
+
+    <el-dialog v-model="allocDialog" title="收款分配明细" width="700px">
+      <el-table :data="allocRows" border size="small">
+        <el-table-column prop="sale_no" label="单号" min-width="140" />
+        <el-table-column prop="amount" label="本次金额" width="100" />
+        <el-table-column prop="method" label="方式" width="100" />
+        <el-table-column prop="paid_at" label="时间" min-width="160"><template #default="{ row }">{{ fmt(row.paid_at) }}</template></el-table-column>
+      </el-table>
+    </el-dialog>
   </div>
 </template>
 
@@ -105,12 +135,13 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import http from '../api/http'
 import { getCustomer, listBuyers } from '../api/customers'
-import { createCustomerReceipt, exportCustomerStatementUrl, getCustomerArSummary, getCustomerStatement } from '../api/customers_ext'
+import { createCustomerReceipt, exportCustomerStatementUrl, getCustomerArSummary, getCustomerStatement, listCustomerPayments } from '../api/customers_ext'
+import { getSalePaymentRecords } from '../api/sales'
 
 const route = useRoute()
 const customerId = Number(route.params.id)
 
-const tableHeight = Math.max(window.innerHeight - 420, 260)
+const tableHeight = Math.max(window.innerHeight - 440, 260)
 const tab = ref('statement')
 const customer = ref(null)
 const buyers = ref([])
@@ -121,10 +152,16 @@ const filters = reactive({ q: '', payment_status: '', sort_by: 'date_desc' })
 const ar = reactive({ total_sales: 0, total_received: 0, total_ar: 0 })
 const statement = reactive({ items: [] })
 const buyerStatement = reactive({ items: [] })
+const payments = reactive({ items: [] })
 
 const receiptDialog = ref(false)
 const receipting = ref(false)
 const receipt = reactive({ method: 'transfer', amount: 0, note: '', allocate_mode: 'oldest_first' })
+
+const paymentsDialog = ref(false)
+const salePayments = ref([])
+const allocDialog = ref(false)
+const allocRows = ref([])
 
 function fmt(v) {
   return v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-'
@@ -172,8 +209,20 @@ async function loadBuyerStatement() {
   buyerStatement.items = data.items || []
 }
 
+async function loadPayments() {
+  const data = await listCustomerPayments(customerId, buildParams())
+  payments.items = data.items || []
+}
+
+async function reloadAll() {
+  await loadStatement()
+  if (tab.value === 'buyer') await loadBuyerStatement()
+  if (tab.value === 'payments') await loadPayments()
+}
+
 function onTab() {
   if (tab.value === 'buyer') loadBuyerStatement().catch(() => ElMessage.error('拿货人账单加载失败'))
+  if (tab.value === 'payments') loadPayments().catch(() => ElMessage.error('收款记录加载失败'))
 }
 
 async function submitReceipt() {
@@ -184,10 +233,22 @@ async function submitReceipt() {
     ElMessage.success('收款完成并已自动分配')
     receiptDialog.value = false
     await loadBase()
-    await loadStatement()
+    await reloadAll()
   } finally {
     receipting.value = false
   }
+}
+
+async function openSalePayments(row) {
+  const data = await getSalePaymentRecords(row.sale_id || row.id)
+  salePayments.value = data.items || []
+  paymentsDialog.value = true
+}
+
+function openReceiptAlloc(row) {
+  if (!row.receipt_no) return ElMessage.info('该记录无批次号')
+  allocRows.value = payments.items.filter((x) => x.receipt_no === row.receipt_no)
+  allocDialog.value = true
 }
 
 function exportCsv() {

@@ -11,15 +11,15 @@ export async function getLastPrice(params) {
 }
 
 export async function getPricingHistory(params) {
-  const { customer_id, product_id, limit = 20 } = params || {}
-  if (!customer_id || !product_id) return []
+  const { customer_id, product_id, page = 1, page_size = 20, start_date, end_date } = params || {}
+  if (!customer_id || !product_id) return { items: [], meta: { total: 0, page: 1, page_size: 20, pages: 0 } }
   try {
     const res = await http.get(`/api/customers/${customer_id}/products/${product_id}/price_history`, {
-      params: { limit },
+      params: { page, page_size, start_date, end_date },
     })
-    return res.data?.items || []
+    return res.data
   } catch (e) {
     console.error('[getPricingHistory] failed:', e)
-    return []
+    return { items: [], meta: { total: 0, page: 1, page_size: 20, pages: 0 } }
   }
 }

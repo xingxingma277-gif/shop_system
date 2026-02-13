@@ -14,6 +14,7 @@ class PaymentRead(BaseModel):
     id: int
     customer_id: int
     sale_id: int
+    receipt_no: Optional[str] = None
     pay_type: str
     amount: float
     method: str
@@ -50,3 +51,8 @@ class CustomerReceiptCreate(BaseModel):
     amount: float = Field(gt=0)
     note: Optional[str] = None
     allocate_mode: str = Field(default="oldest_first")
+
+
+class CustomerPaymentPage(BaseModel):
+    items: List[PaymentRead]
+    meta: dict

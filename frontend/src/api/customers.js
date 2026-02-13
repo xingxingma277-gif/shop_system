@@ -28,9 +28,9 @@ export function createBuyer(customerId, payload) {
   return http.post(`/api/customers/${customerId}/buyers`, payload).then((r) => r.data)
 }
 
-export function getCustomerProductPriceHistory(customerId, productId, limit = 50) {
+export function getCustomerProductPriceHistory(customerId, productId, params = {}) {
   return http
-    .get(`/api/customers/${customerId}/products/${productId}/price_history`, { params: { limit } })
+    .get(`/api/customers/${customerId}/products/${productId}/price_history`, { params })
     .then((r) => r.data)
 }
 

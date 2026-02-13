@@ -12,6 +12,10 @@ export function createCustomerReceipt(customerId, payload) {
   return http.post(`/api/customers/${customerId}/receipts`, payload).then((r) => r.data)
 }
 
+export function listCustomerPayments(customerId, params) {
+  return http.get(`/api/customers/${customerId}/payments`, { params }).then((r) => r.data)
+}
+
 export function exportCustomerStatementUrl(customerId, params = {}) {
   const query = new URLSearchParams(params)
   return `${http.defaults.baseURL}/api/customers/${customerId}/statement/export?${query.toString()}`

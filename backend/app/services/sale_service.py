@@ -1,3 +1,6 @@
+from datetime import datetime
+
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.core.errors import BadRequestError, NotFoundError
@@ -30,6 +33,32 @@ def _generate_sale_no(session: Session, sale_date: datetime) -> str:
     return f"{prefix}{seq:04d}"
 
 
+def next_sale_no(session: Session) -> str:
+    return _generate_sale_no(session, utc_now())
+
+
+def _resolve_buyer_for_customer(session: Session, customer: Customer, buyer_id: int | None):
+    if customer.type == "personal":
+        if buyer_id:
+            buyer = session.get(CustomerContact, buyer_id)
+            if buyer and buyer.customer_id == customer.id:
+                return buyer
+        buyer = session.exec(select(CustomerContact).where(CustomerContact.customer_id == customer.id).order_by(CustomerContact.id.asc())).first()
+        if buyer:
+            return buyer
+        buyer = CustomerContact(customer_id=customer.id, name=customer.name, phone=customer.phone, role="本人", is_active=True)
+        session.add(buyer)
+        session.flush()
+        return buyer
+
+    if not buyer_id:
+        raise BadRequestError("公司客户必须选择拿货人")
+    buyer = session.get(CustomerContact, buyer_id)
+    if not buyer or buyer.customer_id != customer.id:
+        raise BadRequestError("拿货人不存在")
+    return buyer
+
+
 def create_sale(session: Session, data) -> SaleRead:
     customer = session.get(Customer, data.customer_id)
     if not customer:
@@ -37,9 +66,7 @@ def create_sale(session: Session, data) -> SaleRead:
     if not customer.is_active:
         raise BadRequestError("客户已停用，不能开单")
 
-    buyer = session.get(CustomerContact, data.buyer_id)
-    if not buyer or buyer.customer_id != data.customer_id:
-        raise BadRequestError("拿货人不存在")
+    buyer = _resolve_buyer_for_customer(session, customer, data.buyer_id)
 
     if not data.items:
         raise BadRequestError("至少需要 1 行商品明细")
@@ -57,55 +84,64 @@ def create_sale(session: Session, data) -> SaleRead:
         raise BadRequestError(f"以下商品已停用：{', '.join(inactive)}")
 
     sale_date = data.sale_date or utc_now()
+    preferred_sale_no = (data.sale_no or "").strip()
 
-    sale = Sale(
-        sale_no=_generate_sale_no(session, sale_date),
-        customer_id=data.customer_id,
-        buyer_id=data.buyer_id,
-        contact_id=data.buyer_id,
-        contact_name_snapshot=buyer.name,
-        project=data.project,
-        project_name=data.project,
-        sale_date=sale_date,
-        note=data.note,
-        total_amount=0,
-        paid_amount=0,
-        ar_amount=0,
-        payment_status="unpaid",
-    )
-    session.add(sale)
-    session.flush()
-
-    total = 0.0
-    for it in data.items:
-        qty = float(it.qty)
-        price = float(it.unit_price)
-        if qty <= 0:
-            raise BadRequestError("数量必须大于 0")
-        if price < 0:
-            raise BadRequestError("成交价不能为负数")
-
-        line_total = round(qty * price, 2)
-        total += line_total
-
-        si = SaleItem(
-            sale_id=sale.id,
-            product_id=it.product_id,
-            qty=qty,
-            unit_price=price,
-            sold_price=price,
-            line_total=line_total,
-            remark=it.note,
+    for _ in range(3):
+        sale_no = preferred_sale_no or _generate_sale_no(session, sale_date)
+        sale = Sale(
+            sale_no=sale_no,
+            customer_id=data.customer_id,
+            buyer_id=buyer.id,
+            contact_id=buyer.id,
+            contact_name_snapshot=buyer.name,
+            project=(data.project or None),
+            project_name=(data.project or None),
+            sale_date=sale_date,
+            note=data.note,
+            total_amount=0,
+            paid_amount=0,
+            ar_amount=0,
+            payment_status="unpaid",
         )
-        session.add(si)
+        session.add(sale)
+        try:
+            session.flush()
+        except IntegrityError:
+            session.rollback()
+            preferred_sale_no = ""
+            continue
 
-    sale.total_amount = round(total, 2)
-    sale.ar_amount = round(total, 2)
-    sale.payment_status = _compute_payment_status(sale.total_amount, sale.paid_amount)
-    session.add(sale)
-    session.commit()
+        total = 0.0
+        for it in data.items:
+            qty = float(it.qty)
+            price = float(it.unit_price)
+            if qty <= 0:
+                raise BadRequestError("数量必须大于 0")
+            if price < 0:
+                raise BadRequestError("成交价不能为负数")
 
-    return get_sale(session, sale.id)
+            line_total = round(qty * price, 2)
+            total += line_total
+
+            si = SaleItem(
+                sale_id=sale.id,
+                product_id=it.product_id,
+                qty=qty,
+                unit_price=price,
+                sold_price=price,
+                line_total=line_total,
+                remark=it.note,
+            )
+            session.add(si)
+
+        sale.total_amount = round(total, 2)
+        sale.ar_amount = round(total, 2)
+        sale.payment_status = _compute_payment_status(sale.total_amount, sale.paid_amount)
+        session.add(sale)
+        session.commit()
+        return get_sale(session, sale.id)
+
+    raise BadRequestError("生成单号失败，请重试")
 
 
 def list_sales(session: Session, customer_id: int | None, page: int, page_size: int):

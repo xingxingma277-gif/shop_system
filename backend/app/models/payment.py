@@ -18,6 +18,7 @@ class Payment(SQLModel, table=True):
     customer_id: int = Field(foreign_key="customer.id", index=True)
     sale_id: int = Field(foreign_key="sale.id", index=True)
 
+    receipt_no: Optional[str] = Field(default=None, max_length=40, index=True)
     pay_type: str = Field(default="partial", max_length=20, index=True)
     amount: float = Field(gt=0)
     method: str = Field(default="transfer", max_length=20, index=True)

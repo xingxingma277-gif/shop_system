@@ -8,21 +8,25 @@
     </template>
 
     <el-form :model="form" label-width="84px">
+      <el-form-item label="订单编号">
+        <el-input v-model="form.sale_no" readonly style="width:320px" />
+      </el-form-item>
+
       <el-form-item label="客户" required>
         <el-select v-model="form.customer_id" filterable remote clearable :remote-method="onSearchCustomers" style="width: 320px" @change="onCustomerChanged">
           <el-option v-for="c in catalog.customers" :key="c.id" :label="c.name" :value="c.id" />
         </el-select>
       </el-form-item>
 
-      <el-form-item label="拿货人" required>
+      <el-form-item label="拿货人" required v-if="showBuyer">
         <el-select v-model="form.buyer_id" filterable clearable style="width:320px">
           <el-option v-for="b in buyers" :key="b.id" :label="b.name" :value="b.id" :disabled="!b.is_active" />
         </el-select>
         <el-button style="margin-left:8px" @click="openBuyerDialog" :disabled="!form.customer_id">新增拿货人</el-button>
       </el-form-item>
 
-      <el-form-item label="项目" required>
-        <el-input v-model="form.project" placeholder="请输入开单项目" style="width:320px" />
+      <el-form-item label="项目">
+        <el-input v-model="form.project" placeholder="可选" style="width:320px" />
       </el-form-item>
 
       <el-form-item label="备注">
@@ -47,10 +51,11 @@
       <el-table-column label="数量" width="140">
         <template #default="{ row }"><el-input-number v-model="row.qty" :min="0.01" /></template>
       </el-table-column>
-      <el-table-column label="单价" width="220">
+      <el-table-column label="单价" width="320">
         <template #default="{ row }">
           <el-input-number v-model="row.unit_price" :min="0" />
           <el-button circle plain :disabled="!canQueryPricing(row)" @click="ensureHistory(row)">¥</el-button>
+          <el-tag v-if="row.lastPrice" type="warning" style="margin-left:8px">上次拿价：¥{{ money(row.lastPrice) }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="小计" width="120">
@@ -66,25 +71,30 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useCatalogStore } from '../stores/catalog'
 import { createBuyer, getCustomerProductPriceHistory, listBuyers } from '../api/customers'
 import { getLastPricing } from '../api/pricing'
-import { createSale } from '../api/sales'
+import { createSale, getNextSaleNo } from '../api/sales'
 import { money } from '../utils/format'
 
 const router = useRouter()
 const catalog = useCatalogStore()
 
-const form = reactive({ customer_id: null, buyer_id: null, project: '', note: '' })
+const form = reactive({ sale_no: '', customer_id: null, buyer_id: null, project: '', note: '' })
 const buyers = ref([])
 const saving = ref(false)
 const buyerDialog = ref(false)
 const buyerForm = reactive({ name: '' })
 
-const items = ref([{ _key: 1, product_id: null, qty: 1, unit_price: 0, history: [] }])
+const items = ref([{ _key: 1, product_id: null, qty: 1, unit_price: 0, history: [], lastPrice: null }])
+
+const showBuyer = computed(() => {
+  const c = catalog.customers.find((x) => x.id === form.customer_id)
+  return c?.type !== 'personal'
+})
 
 const onSearchCustomers = (q) => catalog.searchCustomers(q || '')
 const onSearchProducts = (q) => catalog.searchProducts(q || '')
@@ -92,7 +102,12 @@ const onSearchProducts = (q) => catalog.searchProducts(q || '')
 async function onCustomerChanged() {
   if (!form.customer_id) return
   buyers.value = await listBuyers(form.customer_id)
-  form.buyer_id = buyers.value[0]?.id || null
+  const c = catalog.customers.find((x) => x.id === form.customer_id)
+  if (c?.type === 'personal') {
+    form.buyer_id = null
+  } else {
+    form.buyer_id = buyers.value[0]?.id || null
+  }
 }
 
 async function onProductChanged(row) {
@@ -101,7 +116,10 @@ async function onProductChanged(row) {
   row.unit_price = Number(p?.standard_price || 0)
   if (canQueryPricing(row)) {
     const last = await getLastPricing({ customer_id: form.customer_id, product_id: row.product_id })
-    if (last?.found) row.unit_price = Number(last.last_price)
+    if (last?.found) {
+      row.lastPrice = Number(last.last_price)
+      row.unit_price = Number(last.last_price)
+    }
   }
 }
 
@@ -110,12 +128,13 @@ function canQueryPricing(row) {
 }
 
 async function ensureHistory(row) {
-  row.history = await getCustomerProductPriceHistory(form.customer_id, row.product_id, 20).then((r) => r.items || [])
-  ElMessage.info(`历史记录 ${row.history.length} 条，可在后续版本图表弹窗展示`)
+  const res = await getCustomerProductPriceHistory(form.customer_id, row.product_id, { page: 1, page_size: 20 })
+  row.history = res.items || []
+  ElMessage.info(`历史记录 ${row.history.length} 条`)
 }
 
 function addRow() {
-  items.value.push({ _key: Date.now(), product_id: null, qty: 1, unit_price: 0, history: [] })
+  items.value.push({ _key: Date.now(), product_id: null, qty: 1, unit_price: 0, history: [], lastPrice: null })
 }
 
 function openBuyerDialog() {
@@ -132,8 +151,12 @@ async function submitBuyer() {
 }
 
 async function submit() {
-  if (!form.customer_id || !form.buyer_id || !form.project.trim()) {
-    ElMessage.warning('客户/拿货人/项目为必填')
+  if (!form.customer_id) {
+    ElMessage.warning('客户必填')
+    return
+  }
+  if (showBuyer.value && !form.buyer_id) {
+    ElMessage.warning('公司客户需选择拿货人')
     return
   }
   const validItems = items.value
@@ -146,7 +169,15 @@ async function submit() {
 
   saving.value = true
   try {
-    const sale = await createSale({ customer_id: form.customer_id, buyer_id: form.buyer_id, project: form.project, note: form.note || null, items: validItems })
+    const sale = await createSale({
+      sale_no: form.sale_no,
+      customer_id: form.customer_id,
+      buyer_id: showBuyer.value ? form.buyer_id : null,
+      project: form.project || null,
+      note: form.note || null,
+      items: validItems,
+    })
+    form.sale_no = sale.sale_no
     router.push(`/sales/${sale.id}/checkout`)
   } finally {
     saving.value = false
@@ -156,5 +187,7 @@ async function submit() {
 onMounted(async () => {
   await catalog.searchCustomers('')
   await catalog.searchProducts('')
+  const data = await getNextSaleNo()
+  form.sale_no = data.sale_no
 })
 </script>
