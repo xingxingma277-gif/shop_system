@@ -395,3 +395,109 @@ def allocate_customer_receipt(session: Session, *, customer_id: int, method: str
     sale_ids = [sid for sid in sales]
     result = allocate_to_sales(session, customer_id=customer_id, sale_ids=sale_ids, amount=amount, method=method, paid_at=None, note=note)
     return 1, result["allocations"]
+
+
+def customer_delete_check(session: Session, customer_id: int):
+    customer = session.get(Customer, customer_id)
+    if not customer:
+        raise NotFoundError("客户不存在")
+
+    sales = session.exec(select(Sale).where(Sale.customer_id == customer_id).order_by(Sale.sale_date.desc(), Sale.id.desc())).all()
+    payments = session.exec(select(Payment).where(Payment.customer_id == customer_id).order_by(Payment.paid_at.desc(), Payment.id.desc())).all()
+
+    pay_rows = []
+    for p in payments:
+        sale_nos = []
+        if p.sale_id:
+            s = session.get(Sale, p.sale_id)
+            if s:
+                sale_nos.append(s.sale_no)
+        alloc_sales = session.exec(
+            select(Sale)
+            .join(PaymentAllocation, PaymentAllocation.sale_id == Sale.id)
+            .where(PaymentAllocation.payment_id == p.id)
+        ).all()
+        for s in alloc_sales:
+            if s.sale_no not in sale_nos:
+                sale_nos.append(s.sale_no)
+        pay_rows.append({
+            "id": p.id,
+            "paid_at": _to_iso_z(p.paid_at),
+            "amount": p.amount,
+            "method": p.method,
+            "sale_nos": sale_nos,
+        })
+
+    return {
+        "can_delete": len(sales) == 0 and len(payments) == 0,
+        "sales_count": len(sales),
+        "payments_count": len(payments),
+        "sales": [{"id": s.id, "sale_no": s.sale_no, "created_at": _to_iso_z(s.created_at), "balance": s.ar_amount} for s in sales],
+        "payments": pay_rows,
+    }
+
+
+def delete_customer_records(session: Session, *, customer_id: int, sale_ids: List[int], payment_ids: List[int]):
+    customer = session.get(Customer, customer_id)
+    if not customer:
+        raise NotFoundError("客户不存在")
+
+    touched_sale_ids = set()
+
+    # delete payments first (and rollback sales by recompute)
+    for pid in payment_ids:
+        p = session.get(Payment, pid)
+        if not p or p.customer_id != customer_id:
+            continue
+        if p.sale_id:
+            touched_sale_ids.add(p.sale_id)
+        allocs = session.exec(select(PaymentAllocation).where(PaymentAllocation.payment_id == p.id)).all()
+        for a in allocs:
+            touched_sale_ids.add(a.sale_id)
+            session.delete(a)
+        session.delete(p)
+
+    # delete sales and cleanup allocations/payments that become empty
+    for sid in sale_ids:
+        s = session.get(Sale, sid)
+        if not s or s.customer_id != customer_id:
+            continue
+        touched_sale_ids.add(s.id)
+
+        allocs = session.exec(select(PaymentAllocation).where(PaymentAllocation.sale_id == s.id)).all()
+        affected_payment_ids = set(a.payment_id for a in allocs)
+        for a in allocs:
+            session.delete(a)
+
+        # cleanup orphan payments after removing allocations
+        for pid in affected_payment_ids:
+            pay = session.get(Payment, pid)
+            if not pay:
+                continue
+            alloc_count = int(session.exec(select(func.count()).select_from(PaymentAllocation).where(PaymentAllocation.payment_id == pid)).one() or 0)
+            if alloc_count == 0 and (pay.sale_id is None or pay.sale_id == s.id):
+                session.delete(pay)
+            elif pay.sale_id == s.id:
+                pay.sale_id = None
+                session.add(pay)
+
+        session.delete(s)
+
+    session.flush()
+
+    # recompute remaining touched sales
+    for sid in list(touched_sale_ids):
+        s = session.get(Sale, sid)
+        if s:
+            recompute_sale_payment(session, s)
+
+    session.commit()
+
+    left_sales = int(session.exec(select(func.count()).select_from(Sale).where(Sale.customer_id == customer_id)).one() or 0)
+    left_payments = int(session.exec(select(func.count()).select_from(Payment).where(Payment.customer_id == customer_id)).one() or 0)
+    return {
+        "deleted_sale_ids": sale_ids,
+        "deleted_payment_ids": payment_ids,
+        "left_sales": left_sales,
+        "left_payments": left_payments,
+    }

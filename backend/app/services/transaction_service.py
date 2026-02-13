@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
+from sqlalchemy import or_
 from sqlmodel import Session, select
 
-from app.models import Customer, Payment, Sale
+from app.models import Customer, Payment, PaymentAllocation, Product, Sale, SaleItem
 
 
 def _parse_iso(v: Optional[str], *, end_of_day: bool = False):
@@ -19,62 +20,112 @@ def _to_iso_z(dt: datetime) -> str:
     return dt.isoformat().replace("+00:00", "Z")
 
 
-def list_transactions(session: Session, *, page: int, page_size: int, start_date: Optional[str], end_date: Optional[str], q: Optional[str], tx_type: Optional[str]):
+def list_sales_transactions(
+    session: Session,
+    *,
+    page: int,
+    page_size: int,
+    start_date: Optional[str],
+    end_date: Optional[str],
+    q: Optional[str],
+    status: Optional[str],
+):
     start_dt = _parse_iso(start_date)
     end_dt = _parse_iso(end_date, end_of_day=True)
+
+    stmt = select(Sale, Customer).join(Customer, Customer.id == Sale.customer_id)
+    if start_dt:
+        stmt = stmt.where(Sale.sale_date >= start_dt)
+    if end_dt:
+        stmt = stmt.where(Sale.sale_date <= end_dt)
+    if status in {"unpaid", "partial", "paid"}:
+        stmt = stmt.where(Sale.payment_status == status)
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        stmt = stmt.outerjoin(SaleItem, SaleItem.sale_id == Sale.id).outerjoin(Product, Product.id == SaleItem.product_id).where(
+            or_(
+                Sale.sale_no.ilike(like),
+                Customer.name.ilike(like),
+                Product.name.ilike(like),
+            )
+        )
+
+    rows_all = session.exec(stmt.order_by(Sale.sale_date.desc(), Sale.id.desc())).all()
+    total = len(rows_all)
+    rows = rows_all[(page - 1) * page_size : page * page_size]
+    items = [
+        {
+            "occurred_at": _to_iso_z(s.sale_date),
+            "sale_id": s.id,
+            "sale_no": s.sale_no,
+            "customer_id": c.id,
+            "customer_name": c.name,
+            "total_amount": s.total_amount,
+            "paid_amount": s.paid_amount,
+            "balance": s.ar_amount,
+            "status": s.payment_status,
+        }
+        for s, c in rows
+    ]
+    return items, total
+
+
+def list_payment_transactions(
+    session: Session,
+    *,
+    page: int,
+    page_size: int,
+    start_date: Optional[str],
+    end_date: Optional[str],
+    q: Optional[str],
+    method: Optional[str],
+):
+    start_dt = _parse_iso(start_date)
+    end_dt = _parse_iso(end_date, end_of_day=True)
+
+    stmt = select(Payment, Customer).join(Customer, Customer.id == Payment.customer_id)
+    if start_dt:
+        stmt = stmt.where(Payment.paid_at >= start_dt)
+    if end_dt:
+        stmt = stmt.where(Payment.paid_at <= end_dt)
+    if method:
+        stmt = stmt.where(Payment.method == method)
+
+    rows_all = session.exec(stmt.order_by(Payment.paid_at.desc(), Payment.id.desc())).all()
+    raw = []
     qv = (q or "").strip().lower()
+    for p, c in rows_all:
+        sale_nos = []
+        if p.sale_id:
+            sale = session.get(Sale, p.sale_id)
+            if sale:
+                sale_nos.append(sale.sale_no)
+        alloc_sales = session.exec(
+            select(Sale)
+            .join(PaymentAllocation, PaymentAllocation.sale_id == Sale.id)
+            .where(PaymentAllocation.payment_id == p.id)
+            .order_by(Sale.sale_date.asc(), Sale.id.asc())
+        ).all()
+        for s in alloc_sales:
+            if s.sale_no not in sale_nos:
+                sale_nos.append(s.sale_no)
 
-    items = []
-
-    if tx_type in (None, "sale"):
-        sale_stmt = select(Sale, Customer).join(Customer, Customer.id == Sale.customer_id)
-        if start_dt:
-            sale_stmt = sale_stmt.where(Sale.sale_date >= start_dt)
-        if end_dt:
-            sale_stmt = sale_stmt.where(Sale.sale_date <= end_dt)
-        for s, c in session.exec(sale_stmt).all():
-            row = {
-                "type": "sale",
-                "occurred_at": _to_iso_z(s.sale_date),
-                "customer_id": c.id,
-                "customer_name": c.name,
-                "sale_id": s.id,
-                "sale_no": s.sale_no,
-                "amount": s.total_amount,
-                "paid": s.paid_amount,
-                "balance": s.ar_amount,
-                "status": s.payment_status,
-                "note": s.note,
-            }
-            if qv and not any(qv in str((row.get(k) or "")).lower() for k in ["customer_name", "sale_no", "note"]):
+        row = {
+            "occurred_at": _to_iso_z(p.paid_at),
+            "payment_id": p.id,
+            "customer_id": c.id,
+            "customer_name": c.name,
+            "method": p.method,
+            "amount": p.amount,
+            "sale_nos": sale_nos,
+            "note": p.note,
+        }
+        if qv:
+            hay = f"{row['customer_name']} {' '.join(row['sale_nos'])} {row.get('note') or ''}".lower()
+            if qv not in hay:
                 continue
-            items.append(row)
+        raw.append(row)
 
-    if tx_type in (None, "payment"):
-        pay_stmt = select(Payment, Customer, Sale).join(Customer, Customer.id == Payment.customer_id).outerjoin(Sale, Sale.id == Payment.sale_id)
-        if start_dt:
-            pay_stmt = pay_stmt.where(Payment.paid_at >= start_dt)
-        if end_dt:
-            pay_stmt = pay_stmt.where(Payment.paid_at <= end_dt)
-        for p, c, s in session.exec(pay_stmt).all():
-            row = {
-                "type": "payment",
-                "occurred_at": _to_iso_z(p.paid_at),
-                "customer_id": c.id,
-                "customer_name": c.name,
-                "payment_id": p.id,
-                "sale_id": p.sale_id,
-                "sale_no": s.sale_no if s else None,
-                "amount": p.amount,
-                "method": p.method,
-                "status": "posted",
-                "note": p.note,
-            }
-            if qv and not any(qv in str((row.get(k) or "")).lower() for k in ["customer_name", "sale_no", "note"]):
-                continue
-            items.append(row)
-
-    items.sort(key=lambda x: x["occurred_at"], reverse=True)
-    total = len(items)
-    paged = items[(page - 1) * page_size : page * page_size]
-    return paged, total
+    total = len(raw)
+    items = raw[(page - 1) * page_size : page * page_size]
+    return items, total

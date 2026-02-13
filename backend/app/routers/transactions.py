@@ -9,23 +9,46 @@ from app.services import transaction_service
 router = APIRouter(prefix="/api/transactions", tags=["Transactions"])
 
 
-@router.get("")
-def list_transactions(
+@router.get("/sales")
+def list_sales_transactions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     start_date: str | None = Query(None),
     end_date: str | None = Query(None),
     q: str | None = Query(None),
-    type: str | None = Query(None),
+    status: str | None = Query(None),
+    sort_by: str = Query("date_desc"),
     session: Session = Depends(get_session),
 ):
-    items, total = transaction_service.list_transactions(
+    items, total = transaction_service.list_sales_transactions(
         session,
         page=page,
         page_size=page_size,
         start_date=start_date,
         end_date=end_date,
         q=q,
-        tx_type=type,
+        status=status,
+    )
+    return {"items": items, "meta": {"total": total, "page": page, "page_size": page_size, "sort_by": sort_by, "pages": ceil(total / page_size)}}
+
+
+@router.get("/payments")
+def list_payments_transactions(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    start_date: str | None = Query(None),
+    end_date: str | None = Query(None),
+    q: str | None = Query(None),
+    method: str | None = Query(None),
+    session: Session = Depends(get_session),
+):
+    items, total = transaction_service.list_payment_transactions(
+        session,
+        page=page,
+        page_size=page_size,
+        start_date=start_date,
+        end_date=end_date,
+        q=q,
+        method=method,
     )
     return {"items": items, "meta": {"total": total, "page": page, "page_size": page_size, "pages": ceil(total / page_size)}}

@@ -1,36 +1,63 @@
 <template>
   <el-card>
-    <template #header>
-      <div style="font-weight:700">交易记录</div>
-    </template>
+    <template #header><div style="font-weight:700">交易记录</div></template>
 
-    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
-      <el-date-picker v-model="dateRange" type="daterange" range-separator="~" start-placeholder="开始" end-placeholder="结束" />
-      <el-select v-model="filters.type" clearable placeholder="类型" style="width:120px">
-        <el-option label="开单" value="sale" />
-        <el-option label="收款" value="payment" />
-      </el-select>
-      <el-input v-model="filters.q" placeholder="客户名/单号/备注" style="width:220px" clearable />
-      <el-button @click="quickDays(7)">近7天</el-button>
-      <el-button @click="quickDays(30)">近30天</el-button>
-      <el-button @click="thisMonth">本月</el-button>
-      <el-button type="primary" @click="load">查询</el-button>
-    </div>
+    <el-tabs v-model="tab" @tab-change="onTabChange">
+      <el-tab-pane label="销售记录" name="sales">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+          <el-date-picker v-model="salesFilters.dateRange" type="daterange" range-separator="~" start-placeholder="开始" end-placeholder="结束" />
+          <el-input v-model="salesFilters.q" placeholder="单号/客户名/商品名" style="width:240px" clearable />
+          <el-select v-model="salesFilters.status" clearable placeholder="状态" style="width:140px">
+            <el-option label="未结清" value="unpaid" />
+            <el-option label="部分结清" value="partial" />
+            <el-option label="已结清" value="paid" />
+          </el-select>
+          <el-button type="primary" @click="loadSales">查询</el-button>
+        </div>
 
-    <el-table :data="rows" border>
-      <el-table-column prop="occurred_at" label="时间" min-width="160"><template #default="{row}">{{ fmt(row.occurred_at) }}</template></el-table-column>
-      <el-table-column prop="type" label="类型" width="90"><template #default="{row}">{{ row.type === 'sale' ? '开单' : '收款' }}</template></el-table-column>
-      <el-table-column prop="customer_name" label="客户" min-width="160"><template #default="{row}"><router-link :to="`/customers/${row.customer_id}`">{{ row.customer_name }}</router-link></template></el-table-column>
-      <el-table-column prop="sale_no" label="关联单号" min-width="160" />
-      <el-table-column prop="amount" label="金额" width="110" />
-      <el-table-column label="状态" width="120">
-        <template #default="{row}">
-          <span v-if="row.type==='sale'">{{ statusText(row.status) }}</span>
-          <span v-else>已入账</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="note" label="备注" min-width="180" show-overflow-tooltip />
-    </el-table>
+        <el-table :data="salesRows" border>
+          <el-table-column prop="occurred_at" label="时间" min-width="160"><template #default="{row}">{{ formatDateTime(row.occurred_at) }}</template></el-table-column>
+          <el-table-column prop="sale_no" label="单号" min-width="150"><template #default="{row}"><el-button link type="primary" @click="goSale(row.sale_id)">{{ row.sale_no }}</el-button></template></el-table-column>
+          <el-table-column prop="customer_name" label="客户" min-width="160"><template #default="{row}"><el-button link type="primary" @click="goCustomer(row.customer_id)">{{ row.customer_name }}</el-button></template></el-table-column>
+          <el-table-column prop="total_amount" label="应收" width="100" />
+          <el-table-column prop="paid_amount" label="已收" width="100" />
+          <el-table-column prop="balance" label="未收" width="100" />
+          <el-table-column prop="status" label="状态" width="120">
+            <template #default="{row}">
+              <el-tag v-if="row.status==='paid'" type="success">已结清</el-tag>
+              <el-tag v-else-if="row.status==='partial'" type="warning">部分结清</el-tag>
+              <el-tag v-else type="danger">未结清</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="100"><template #default="{row}"><el-button link @click="goSale(row.sale_id)">详情</el-button></template></el-table-column>
+        </el-table>
+      </el-tab-pane>
+
+      <el-tab-pane label="还款记录" name="payments">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+          <el-date-picker v-model="payFilters.dateRange" type="daterange" range-separator="~" start-placeholder="开始" end-placeholder="结束" />
+          <el-input v-model="payFilters.q" placeholder="客户名/订单号" style="width:220px" clearable />
+          <el-select v-model="payFilters.method" clearable placeholder="方式" style="width:140px">
+            <el-option label="现金" value="cash" />
+            <el-option label="微信" value="wechat" />
+            <el-option label="支付宝" value="alipay" />
+            <el-option label="转账" value="transfer" />
+          </el-select>
+          <el-button type="primary" @click="loadPayments">查询</el-button>
+        </div>
+
+        <el-table :data="payRows" border>
+          <el-table-column prop="occurred_at" label="时间" min-width="160"><template #default="{row}">{{ formatDateTime(row.occurred_at) }}</template></el-table-column>
+          <el-table-column prop="customer_name" label="客户" min-width="160"><template #default="{row}"><el-button link type="primary" @click="goCustomer(row.customer_id)">{{ row.customer_name }}</el-button></template></el-table-column>
+          <el-table-column prop="method" label="方式" width="110" />
+          <el-table-column prop="amount" label="金额" width="100" />
+          <el-table-column label="关联订单" min-width="220">
+            <template #default="{row}">{{ foldSaleNos(row.sale_nos) }}</template>
+          </el-table-column>
+          <el-table-column prop="note" label="备注" min-width="160" show-overflow-tooltip />
+        </el-table>
+      </el-tab-pane>
+    </el-tabs>
 
     <div style="display:flex; justify-content:flex-end; margin-top:12px;">
       <el-pagination background layout="total, prev, pager, next" :current-page="page" :page-size="pageSize" :total="total" @current-change="onPage" />
@@ -40,42 +67,72 @@
 
 <script setup>
 import dayjs from 'dayjs'
-import { onMounted, ref, reactive } from 'vue'
-import { listTransactions } from '../api/transactions'
+import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { listTransactionPayments, listTransactionSales } from '../api/transactions'
+import { formatDateTime } from '../utils/format'
 
-const dateRange = ref([dayjs().startOf('month').toDate(), dayjs().endOf('month').toDate()])
-const filters = reactive({ q: '', type: '' })
-const rows = ref([])
+const router = useRouter()
+const tab = ref('sales')
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 
-const fmt = (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-')
-const statusText = (v) => ({ unpaid: '未结清', partial: '部分结清', paid: '已结清' }[v] || '-')
+const salesRows = ref([])
+const payRows = ref([])
 
-function quickDays(days) {
-  dateRange.value = [dayjs().subtract(days, 'day').toDate(), dayjs().endOf('day').toDate()]
-}
-function thisMonth() {
-  dateRange.value = [dayjs().startOf('month').toDate(), dayjs().endOf('month').toDate()]
-}
+const salesFilters = reactive({
+  dateRange: [dayjs().startOf('month').toDate(), dayjs().endOf('month').toDate()],
+  q: '',
+  status: '',
+})
+
+const payFilters = reactive({
+  dateRange: [dayjs().startOf('month').toDate(), dayjs().endOf('month').toDate()],
+  q: '',
+  method: '',
+})
+
 function onPage(p) {
   page.value = p
-  load()
+  tab.value === 'sales' ? loadSales() : loadPayments()
 }
 
-async function load() {
-  const data = await listTransactions({
+function onTabChange() {
+  page.value = 1
+  tab.value === 'sales' ? loadSales() : loadPayments()
+}
+
+async function loadSales() {
+  const data = await listTransactionSales({
     page: page.value,
     page_size: pageSize.value,
-    start_date: dateRange.value?.[0] ? dayjs(dateRange.value[0]).format('YYYY-MM-DD') : undefined,
-    end_date: dateRange.value?.[1] ? dayjs(dateRange.value[1]).format('YYYY-MM-DD') : undefined,
-    q: filters.q || undefined,
-    type: filters.type || undefined,
+    start_date: salesFilters.dateRange?.[0] ? dayjs(salesFilters.dateRange[0]).format('YYYY-MM-DD') : undefined,
+    end_date: salesFilters.dateRange?.[1] ? dayjs(salesFilters.dateRange[1]).format('YYYY-MM-DD') : undefined,
+    q: salesFilters.q || undefined,
+    status: salesFilters.status || undefined,
+    sort_by: 'date_desc',
   })
-  rows.value = data.items || []
+  salesRows.value = data.items || []
   total.value = data.meta?.total || 0
 }
 
-onMounted(load)
+async function loadPayments() {
+  const data = await listTransactionPayments({
+    page: page.value,
+    page_size: pageSize.value,
+    start_date: payFilters.dateRange?.[0] ? dayjs(payFilters.dateRange[0]).format('YYYY-MM-DD') : undefined,
+    end_date: payFilters.dateRange?.[1] ? dayjs(payFilters.dateRange[1]).format('YYYY-MM-DD') : undefined,
+    q: payFilters.q || undefined,
+    method: payFilters.method || undefined,
+  })
+  payRows.value = data.items || []
+  total.value = data.meta?.total || 0
+}
+
+const foldSaleNos = (list) => !list?.length ? '-' : (list.length <= 2 ? list.join('、') : `${list.slice(0, 2).join('、')} +${list.length - 2}`)
+const goSale = (id) => router.push(`/sales/${id}`)
+const goCustomer = (id) => router.push(`/customers/${id}`)
+
+onMounted(loadSales)
 </script>

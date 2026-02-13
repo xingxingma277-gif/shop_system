@@ -60,6 +60,29 @@ def update_customer(customer_id: int, payload: CustomerUpdate, session: Session 
         raise HTTPException(status_code=400, detail=exc.message)
 
 
+@router.get("/{customer_id}/delete_check")
+def customer_delete_check(customer_id: int, session: Session = Depends(get_session)):
+    try:
+        return payment_service.customer_delete_check(session, customer_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+
+
+@router.post("/{customer_id}/delete_records")
+def customer_delete_records(customer_id: int, payload: dict, session: Session = Depends(get_session)):
+    sale_ids = list(payload.get("sale_ids") or [])
+    payment_ids = list(payload.get("payment_ids") or [])
+    try:
+        return payment_service.delete_customer_records(
+            session,
+            customer_id=customer_id,
+            sale_ids=sale_ids,
+            payment_ids=payment_ids,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+
+
 @router.delete("/{customer_id}", status_code=204)
 def delete_customer(customer_id: int, session: Session = Depends(get_session)):
     try:

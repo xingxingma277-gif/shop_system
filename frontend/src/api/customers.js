@@ -44,3 +44,12 @@ export function searchCustomersApi(keyword) {
 
 export const listCustomersApi = listCustomers
 export const getCustomerApi = getCustomer
+
+
+export function deleteCustomerCheck(id) {
+  return http.get(`/api/customers/${id}/delete_check`).then((r) => r.data)
+}
+
+export function deleteCustomerRecords(id, payload) {
+  return http.post(`/api/customers/${id}/delete_records`, payload).then((r) => r.data)
+}

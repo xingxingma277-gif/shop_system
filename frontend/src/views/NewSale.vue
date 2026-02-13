@@ -11,7 +11,7 @@
       <el-form-item label="订单编号"><el-input v-model="form.sale_no" readonly style="width:320px" /></el-form-item>
       <el-form-item label="客户" required>
         <el-select v-model="form.customer_id" filterable remote clearable :remote-method="onSearchCustomers" style="width: 320px" @change="onCustomerChanged">
-          <el-option v-for="c in catalog.customers" :key="c.id" :label="c.name" :value="c.id" />
+          <el-option v-for="c in catalog.customers" :key="c.id" :label="`${c.name}${c.is_active ? '' : '（已停用）'}`" :value="c.id" :disabled="!c.is_active" />
         </el-select>
       </el-form-item>
       <el-form-item label="拿货人" required v-if="showBuyer">
@@ -31,7 +31,7 @@
       <el-table-column label="商品" min-width="260">
         <template #default="{ row }">
           <el-select v-model="row.product_id" filterable remote clearable :remote-method="onSearchProducts" style="width:100%" @change="()=>onProductChanged(row)">
-            <el-option v-for="p in catalog.products" :key="p.id" :label="p.name" :value="p.id" :disabled="!p.is_active" />
+            <el-option v-for="p in catalog.products" :key="p.id" :label="`${p.name}${p.is_active ? '' : '（已停售）'}`" :value="p.id" :disabled="!p.is_active" />
           </el-select>
         </template>
       </el-table-column>

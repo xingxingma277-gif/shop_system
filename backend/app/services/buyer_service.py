@@ -73,7 +73,7 @@ def buyer_statement(
 
     items = [
         {
-            "date": s.sale_date.isoformat(),
+            "date": s.sale_date.isoformat().replace("+00:00", "Z"),
             "sale_id": s.id,
             "project": s.project,
             "buyer_name": buyer.name,
