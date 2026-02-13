@@ -1,9 +1,6 @@
-from datetime import datetime
-
 from sqlmodel import Session, select
-from sqlalchemy import or_
-
 from app.core.errors import NotFoundError, BadRequestError
+from app.core.time import utc_now
 from app.models import Sale, SaleItem, Customer, Product
 from app.schemas.sale import SaleRead, SaleItemRead, SaleSummary
 from app.services.pagination import paginate
@@ -33,7 +30,7 @@ def create_sale(session: Session, data) -> SaleRead:
 
     sale = Sale(
         customer_id=data.customer_id,
-        sale_date=data.sale_date or datetime.utcnow(),
+        sale_date=data.sale_date or utc_now(),
         note=data.note,
         total_amount=0,
     )

@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlmodel import Session
 
+from app.core.errors import NotFoundError
 from app.db.session import get_session
-from app.schemas.product import ProductCreate, ProductRead, ProductUpdate, ProductPage
+from app.schemas.product import ProductCreate, ProductPage, ProductRead, ProductUpdate
 from app.services import product_service
 
 router = APIRouter(prefix="/api/products", tags=["Products"])
@@ -17,7 +18,7 @@ def get_products(
     session: Session = Depends(get_session),
 ):
     rows, total, page, page_size = product_service.list_products(session, page, page_size, q, active_only)
-    return ProductPage(items=rows, total=total, page=page, page_size=page_size)
+    return ProductPage(items=rows, total=int(total), page=page, page_size=page_size)
 
 
 @router.post("", response_model=ProductRead)
@@ -34,7 +35,38 @@ def patch_product(
     payload: ProductUpdate,
     session: Session = Depends(get_session),
 ):
-    return product_service.update_product(session, product_id, payload)
+    try:
+        return product_service.update_product(session, product_id, payload)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+
+
+@router.put("/{product_id}", response_model=ProductRead)
+def put_product(
+    product_id: int,
+    payload: ProductUpdate,
+    session: Session = Depends(get_session),
+):
+    try:
+        return product_service.update_product(session, product_id, payload)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+
+
+@router.delete("/{product_id}", status_code=204)
+def delete_product(
+    product_id: int,
+    session: Session = Depends(get_session),
+):
+    try:
+        product_service.delete_product(session, product_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+    except ValueError as exc:
+        if str(exc) == "product_has_related_records":
+            raise HTTPException(status_code=409, detail="商品已被销售单引用，不能删除")
+        raise
+    return Response(status_code=204)
 
 
 @router.post("/{product_id}/toggle_active", response_model=ProductRead)
@@ -42,4 +74,7 @@ def toggle_active(
     product_id: int,
     session: Session = Depends(get_session),
 ):
-    return product_service.toggle_product_active(session, product_id)
+    try:
+        return product_service.toggle_product_active(session, product_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
