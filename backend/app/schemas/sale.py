@@ -21,6 +21,13 @@ class SaleCreate(SQLModel):
     items: List[SaleItemCreate]
 
 
+class SaleSettlementUpdate(SQLModel):
+    settlement_status: str
+    paid_amount: float
+    payment_method: Optional[str] = None
+    payment_note: Optional[str] = None
+
+
 class SaleItemRead(SQLModel):
     id: int
     product_id: int
@@ -47,6 +54,9 @@ class SaleRead(SQLModel):
     paid_amount: float
     ar_amount: float
     payment_status: str
+    settlement_status: str
+    payment_method: Optional[str] = None
+    payment_note: Optional[str] = None
     created_at: datetime
     items: List[SaleItemRead] = []
 

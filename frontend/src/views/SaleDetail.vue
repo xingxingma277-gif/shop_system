@@ -32,7 +32,8 @@
       <span>应收：¥{{ money(sale.total_amount) }}</span>
       <span>已收：¥{{ money(sale.paid_amount) }}</span>
       <span>未收：¥{{ money(sale.ar_amount) }}</span>
-      <el-tag :type="statusTag(sale.payment_status)">{{ statusText(sale.payment_status) }}</el-tag>
+      <span>付款方式：{{ paymentMethodText(sale.payment_method) }}</span>
+      <el-tag :type="statusTag(sale.settlement_status || sale.payment_status)">{{ statusText(sale.settlement_status || sale.payment_status) }}</el-tag>
     </div>
   </el-card>
 </template>
@@ -49,8 +50,9 @@ const router = useRouter()
 const sale = ref(null)
 
 const fmt = (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-')
-const statusText = (v) => ({ unpaid: '未结清', partial: '部分结清', paid: '已结清' }[v] || '-')
-const statusTag = (v) => ({ unpaid: 'danger', partial: 'warning', paid: 'success' }[v] || 'info')
+const statusText = (v) => ({ unpaid: '未结清', partial: '部分结清', paid: '已结清', UNPAID: '未结清', PARTIAL: '部分结清', PAID: '已结清' }[v] || '-')
+const statusTag = (v) => ({ unpaid: 'danger', partial: 'warning', paid: 'success', UNPAID: 'danger', PARTIAL: 'warning', PAID: 'success' }[v] || 'info')
+const paymentMethodText = (v) => ({ cash: '现金', wechat: '微信', alipay: '支付宝', bank_transfer: '银行转账' }[v] || '-')
 
 function onPrint() { window.print() }
 function onContinue() {

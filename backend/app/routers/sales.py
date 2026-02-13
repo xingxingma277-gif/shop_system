@@ -3,7 +3,7 @@ from sqlmodel import Session
 
 from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_session
-from app.schemas.sale import SaleCreate, SalePage, SalePaymentCreate, SalePaymentSubmitResponse, SaleRead
+from app.schemas.sale import SaleCreate, SalePage, SalePaymentCreate, SalePaymentSubmitResponse, SaleRead, SaleSettlementUpdate
 from app.services import payment_service, sale_service
 
 router = APIRouter(prefix="/api/sales", tags=["Sales"])
@@ -39,6 +39,23 @@ def get_sale_detail(sale_id: int, session: Session = Depends(get_session)):
         return sale_service.get_sale(session, sale_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message)
+
+
+@router.post("/{sale_id}/settlement", response_model=SaleRead)
+def submit_settlement(sale_id: int, payload: SaleSettlementUpdate, session: Session = Depends(get_session)):
+    try:
+        return sale_service.update_settlement(
+            session,
+            sale_id=sale_id,
+            settlement_status=payload.settlement_status,
+            paid_amount=payload.paid_amount,
+            payment_method=payload.payment_method,
+            payment_note=payload.payment_note,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+    except BadRequestError as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
 
 
 @router.post("/{sale_id}/payments", response_model=SalePaymentSubmitResponse)

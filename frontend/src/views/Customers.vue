@@ -17,9 +17,7 @@
       <el-table-column prop="contact_name" label="联系人" width="120" />
       <el-table-column prop="phone" label="电话" width="160" />
       <el-table-column prop="address" label="地址" min-width="240" />
-      <el-table-column label="状态" width="120">
-        <template #default="{ row }"><el-tag :type="row.is_active ? 'success' : 'danger'">{{ row.is_active ? '正常' : '停用' }}</el-tag></template>
-      </el-table-column>
+      <el-table-column label="状态" width="120"><template #default="{ row }"><el-tag :type="row.is_active ? 'success' : 'danger'">{{ row.is_active ? '正常' : '停用' }}</el-tag></template></el-table-column>
       <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="goProfile(row)">档案</el-button>
@@ -29,9 +27,7 @@
       </el-table-column>
     </el-table>
 
-    <div style="display:flex;justify-content:flex-end;margin-top:12px;">
-      <el-pagination layout="prev, pager, next, sizes, total" :total="total" v-model:current-page="page" v-model:page-size="pageSize" @current-change="fetchList" @size-change="fetchList" />
-    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px;"><el-pagination layout="prev, pager, next, sizes, total" :total="total" v-model:current-page="page" v-model:page-size="pageSize" @current-change="fetchList" @size-change="fetchList" /></div>
 
     <el-dialog v-model="dialogOpen" :title="editing ? '编辑客户' : '新增客户'" width="520px">
       <el-form :model="form" label-width="90px">
@@ -52,7 +48,7 @@
       <el-collapse>
         <el-collapse-item title="销售记录" name="sales">
           <el-table :data="delInfo.sales || []" size="small" border @selection-change="(rows)=>selectedSaleIds = rows.map(x=>x.id)">
-            <el-table-column v-if="selectMode" type="selection" width="48" />
+            <el-table-column v-if="mode==='select'" type="selection" width="48" />
             <el-table-column prop="sale_no" label="单号" min-width="140" />
             <el-table-column prop="created_at" label="时间" min-width="160"><template #default="{row}">{{ formatDateTime(row.created_at) }}</template></el-table-column>
             <el-table-column prop="balance" label="未收" width="100" />
@@ -60,7 +56,7 @@
         </el-collapse-item>
         <el-collapse-item title="还款记录" name="payments">
           <el-table :data="delInfo.payments || []" size="small" border @selection-change="(rows)=>selectedPaymentIds = rows.map(x=>x.id)">
-            <el-table-column v-if="selectMode" type="selection" width="48" />
+            <el-table-column v-if="mode==='select'" type="selection" width="48" />
             <el-table-column prop="paid_at" label="时间" min-width="160"><template #default="{row}">{{ formatDateTime(row.paid_at) }}</template></el-table-column>
             <el-table-column prop="amount" label="金额" width="100" />
             <el-table-column prop="method" label="方式" width="100" />
@@ -70,10 +66,16 @@
       </el-collapse>
 
       <template #footer>
-        <el-button @click="deleteDialog=false">取消</el-button>
-        <el-button @click="selectMode=true">选择删除</el-button>
-        <el-button type="danger" :loading="deleting" @click="deleteAllAndCustomer">全部删除交易并删除客户</el-button>
-        <el-button v-if="selectMode" type="danger" plain :loading="deleting" @click="deleteSelected">删除已选记录</el-button>
+        <template v-if="mode==='view'">
+          <el-button @click="deleteDialog=false">取消</el-button>
+          <el-button @click="mode='select'">选择删除</el-button>
+          <el-button type="danger" :loading="deleting" @click="deleteAllAndCustomer">全部删除交易并删除客户</el-button>
+        </template>
+        <template v-else>
+          <el-button @click="cancelSelectMode">取消</el-button>
+          <el-button type="danger" plain :loading="deleting" @click="deleteSelected">删除已选记录</el-button>
+          <el-button type="danger" :loading="deleting" @click="deleteAllAndCustomer">全部删除交易并删除客户</el-button>
+        </template>
       </template>
     </el-dialog>
   </el-card>
@@ -104,7 +106,7 @@ const deleteCustomerId = ref(null)
 const delInfo = reactive({ can_delete: false, sales_count: 0, payments_count: 0, sales: [], payments: [] })
 const selectedSaleIds = ref([])
 const selectedPaymentIds = ref([])
-const selectMode = ref(false)
+const mode = ref('view')
 const deleting = ref(false)
 
 function resetForm() { form.name=''; form.type='company'; form.contact_name=''; form.phone=''; form.address=''; form.is_active=true }
@@ -140,8 +142,14 @@ async function openDeleteGuide(row) {
   Object.assign(delInfo, check)
   selectedSaleIds.value = []
   selectedPaymentIds.value = []
-  selectMode.value = false
+  mode.value = 'view'
   deleteDialog.value = true
+}
+
+function cancelSelectMode() {
+  mode.value = 'view'
+  selectedSaleIds.value = []
+  selectedPaymentIds.value = []
 }
 
 async function deleteSelected() {

@@ -38,6 +38,9 @@ class Sale(SQLModel, table=True):
     paid_amount: float = Field(default=0, ge=0, nullable=False)
     ar_amount: float = Field(default=0, ge=0, nullable=False)
     payment_status: str = Field(default="unpaid", max_length=20, index=True)
+    settlement_status: str = Field(default="UNPAID", max_length=20, index=True)
+    payment_method: Optional[str] = Field(default=None, max_length=30)
+    payment_note: Optional[str] = Field(default=None, max_length=255)
 
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
 

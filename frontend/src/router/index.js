@@ -6,6 +6,7 @@ import Customers from '../views/Customers.vue'
 import CustomerProfile from '../views/CustomerProfile.vue'
 import SaleCheckout from '../views/SaleCheckout.vue'
 import SaleDetail from '../views/SaleDetail.vue'
+import SaleSettlement from '../views/SaleSettlement.vue'
 import Transactions from '../views/Transactions.vue'
 
 const routes = [
@@ -16,6 +17,7 @@ const routes = [
   { path: '/customers/:id', component: CustomerProfile, meta: { title: '客户档案' } },
   { path: '/transactions', component: Transactions, meta: { title: '交易记录' } },
   { path: '/sales/:id', component: SaleDetail, meta: { title: '订单详情' } },
+  { path: '/sales/:id/settlement', component: SaleSettlement, meta: { title: '订单结算' } },
   { path: '/sales/:id/checkout', component: SaleCheckout, meta: { title: '收款确认' } },
   { path: '/checkout', component: SaleCheckout, meta: { title: '收款确认' } }
 ]

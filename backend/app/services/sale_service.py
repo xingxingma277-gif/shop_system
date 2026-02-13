@@ -11,12 +11,20 @@ from app.schemas.sale import SaleItemRead, SaleRead, SaleSummary
 from app.services.pagination import paginate
 
 
+_ALLOWED_SETTLEMENT = {"UNPAID", "PARTIAL", "PAID"}
+_ALLOWED_METHODS = {"cash", "wechat", "alipay", "bank_transfer"}
+
+
 def _compute_payment_status(total_amount: float, paid_amount: float) -> str:
     if paid_amount <= 0:
         return "unpaid"
     if paid_amount + 1e-6 >= total_amount:
         return "paid"
     return "partial"
+
+
+def _to_settlement_status(payment_status: str) -> str:
+    return {"unpaid": "UNPAID", "partial": "PARTIAL", "paid": "PAID"}.get(payment_status, "UNPAID")
 
 
 def _generate_sale_no(session: Session, sale_date: datetime) -> str:
@@ -103,6 +111,9 @@ def create_sale(session: Session, data) -> SaleRead:
             paid_amount=0,
             ar_amount=0,
             payment_status="unpaid",
+            settlement_status="UNPAID",
+            payment_method=None,
+            payment_note=None,
         )
         session.add(sale)
         try:
@@ -138,11 +149,49 @@ def create_sale(session: Session, data) -> SaleRead:
         sale.total_amount = round(total, 2)
         sale.ar_amount = round(total, 2)
         sale.payment_status = _compute_payment_status(sale.total_amount, sale.paid_amount)
+        sale.settlement_status = _to_settlement_status(sale.payment_status)
         session.add(sale)
         session.commit()
         return get_sale(session, sale.id)
 
     raise BadRequestError("生成单号失败，请重试")
+
+
+def update_settlement(session: Session, *, sale_id: int, settlement_status: str, paid_amount: float, payment_method: str | None, payment_note: str | None):
+    sale = session.get(Sale, sale_id)
+    if not sale:
+        raise NotFoundError("单据不存在")
+
+    status = (settlement_status or "").upper()
+    total = float(sale.total_amount)
+    paid = float(paid_amount or 0)
+
+    if status not in _ALLOWED_SETTLEMENT:
+        raise BadRequestError("settlement_status 仅支持 UNPAID/PARTIAL/PAID")
+
+    if status == "UNPAID":
+        paid = 0
+        payment_method = None
+    elif status == "PARTIAL":
+        if not (0 < paid < total):
+            raise BadRequestError("PARTIAL 时 paid_amount 必须大于0且小于应收")
+        if payment_method not in _ALLOWED_METHODS:
+            raise BadRequestError("PARTIAL 时必须选择付款方式")
+    elif status == "PAID":
+        paid = total
+        if payment_method not in _ALLOWED_METHODS:
+            raise BadRequestError("PAID 时必须选择付款方式")
+
+    sale.paid_amount = round(paid, 2)
+    sale.ar_amount = round(max(total - sale.paid_amount, 0), 2)
+    sale.payment_status = _compute_payment_status(total, sale.paid_amount)
+    sale.settlement_status = status
+    sale.payment_method = payment_method
+    sale.payment_note = payment_note if payment_note else None
+
+    session.add(sale)
+    session.commit()
+    return get_sale(session, sale.id)
 
 
 def list_sales(session: Session, customer_id: int | None, page: int, page_size: int):
@@ -215,6 +264,9 @@ def get_sale(session: Session, sale_id: int) -> SaleRead:
         paid_amount=sale.paid_amount,
         ar_amount=sale.ar_amount,
         payment_status=sale.payment_status,
+        settlement_status=sale.settlement_status,
+        payment_method=sale.payment_method,
+        payment_note=sale.payment_note,
         created_at=sale.created_at,
         items=items,
     )
@@ -227,4 +279,7 @@ def recompute_sale_payment(session: Session, sale: Sale):
     sale.paid_amount = paid
     sale.ar_amount = round(max(float(sale.total_amount) - sale.paid_amount, 0), 2)
     sale.payment_status = _compute_payment_status(float(sale.total_amount), float(sale.paid_amount))
+    sale.settlement_status = _to_settlement_status(sale.payment_status)
+    if sale.settlement_status == "UNPAID":
+        sale.payment_method = None
     session.add(sale)

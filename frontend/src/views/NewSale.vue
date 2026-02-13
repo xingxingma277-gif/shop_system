@@ -154,7 +154,7 @@ async function submit() {
   try {
     const sale = await createSale({ sale_no: form.sale_no, customer_id: form.customer_id, buyer_id: showBuyer.value ? form.buyer_id : null, project: form.project || null, note: form.note || null, items: validItems })
     form.sale_no = sale.sale_no
-    router.push(`/sales/${sale.id}`)
+    router.push(`/sales/${sale.id}/settlement`)
   } finally {
     saving.value = false
   }
