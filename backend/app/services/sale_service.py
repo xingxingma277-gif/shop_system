@@ -1,6 +1,4 @@
 from sqlmodel import Session, select
-from sqlalchemy import or_
-
 from app.core.errors import NotFoundError, BadRequestError
 from app.core.time import utc_now
 from app.models import Sale, SaleItem, Customer, Product
