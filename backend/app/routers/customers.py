@@ -47,6 +47,17 @@ def get_customer_detail(customer_id: int, session: Session = Depends(get_session
         raise HTTPException(status_code=404, detail=exc.message)
 
 
+@router.get("/{customer_id}", response_model=CustomerRead)
+def get_customer_detail(
+    customer_id: int,
+    session: Session = Depends(get_session),
+):
+    try:
+        return customer_service.get_customer_or_404(session, customer_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+
+
 @router.patch("/{customer_id}", response_model=CustomerRead)
 @router.put("/{customer_id}", response_model=CustomerRead)
 def update_customer(customer_id: int, payload: CustomerUpdate, session: Session = Depends(get_session)):
