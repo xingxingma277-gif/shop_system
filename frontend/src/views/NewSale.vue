@@ -154,7 +154,7 @@ async function submit() {
   try {
     const sale = await createSale({ sale_no: form.sale_no, customer_id: form.customer_id, buyer_id: showBuyer.value ? form.buyer_id : null, project: form.project || null, note: form.note || null, items: validItems })
     form.sale_no = sale.sale_no
-    router.push(`/sales/${sale.id}/checkout`)
+    router.push(`/sales/${sale.id}`)
   } finally {
     saving.value = false
   }
@@ -164,5 +164,16 @@ onMounted(async () => {
   await catalog.searchCustomers('')
   await catalog.searchProducts('')
   form.sale_no = (await getNextSaleNo()).sale_no
+  const last = localStorage.getItem('shop:new_sale_last')
+  if (last) {
+    try {
+      const parsed = JSON.parse(last)
+      if (parsed.customer_id) {
+        form.customer_id = parsed.customer_id
+        await onCustomerChanged()
+      }
+      if (parsed.buyer_id) form.buyer_id = parsed.buyer_id
+    } catch {}
+  }
 })
 </script>

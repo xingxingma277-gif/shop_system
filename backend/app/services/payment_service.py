@@ -202,36 +202,34 @@ def list_customer_payments(session: Session, customer_id: int, *, page: int, pag
 
     items = []
     for p in rows:
-        sale_no = None
+        sale_nos = []
         if p.sale_id:
             sale = session.get(Sale, p.sale_id)
-            sale_no = sale.sale_no if sale else None
-        else:
-            first_alloc = session.exec(
-                select(PaymentAllocation, Sale)
-                .join(Sale, Sale.id == PaymentAllocation.sale_id)
-                .where(PaymentAllocation.payment_id == p.id)
-                .order_by(PaymentAllocation.id.asc())
-                .limit(1)
-            ).first()
-            if first_alloc:
-                _, s = first_alloc
-                sale_no = s.sale_no
-        alloc_count = int(
-            session.exec(select(func.count()).select_from(PaymentAllocation).where(PaymentAllocation.payment_id == p.id)).one() or 0
-        )
+            if sale:
+                sale_nos = [sale.sale_no]
+        alloc_sales = session.exec(
+            select(Sale)
+            .join(PaymentAllocation, PaymentAllocation.sale_id == Sale.id)
+            .where(PaymentAllocation.payment_id == p.id)
+            .order_by(Sale.sale_date.asc(), Sale.id.asc())
+        ).all()
+        for s in alloc_sales:
+            if s.sale_no not in sale_nos:
+                sale_nos.append(s.sale_no)
+
         items.append(
             {
                 "id": p.id,
                 "receipt_no": p.receipt_no,
                 "sale_id": p.sale_id,
-                "sale_no": sale_no,
+                "sale_no": sale_nos[0] if sale_nos else None,
+                "sale_nos": sale_nos,
                 "amount": p.amount,
                 "method": p.method,
                 "pay_type": p.pay_type,
                 "paid_at": _to_iso_z(p.paid_at),
                 "note": p.note,
-                "has_allocations": alloc_count > 0,
+                "has_allocations": len(sale_nos) > 1 or bool(alloc_sales),
             }
         )
     return items, total
