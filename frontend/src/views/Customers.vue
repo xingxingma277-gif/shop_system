@@ -22,10 +22,15 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="goProfile(row)">档案</el-button>
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-popconfirm title="确认删除该客户？删除后不可恢复。" @confirm="removeCustomer(row)">
+            <template #reference>
+              <el-button link type="danger">删除</el-button>
+            </template>
+          </el-popconfirm>
         </template>
       </el-table-column>
     </el-table>
@@ -70,7 +75,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
-import { listCustomers, createCustomer, updateCustomer } from '../api/customers'
+import { listCustomers, createCustomer, updateCustomer, deleteCustomer } from '../api/customers'
 
 const router = useRouter()
 
@@ -106,8 +111,11 @@ async function fetchList() {
     q: q.value || null,
     active_only: false
   })
-  rows.value = res.items
-  total.value = res.total
+  const meta = res.meta || {}
+  rows.value = res.items || []
+  total.value = Number(meta.total || 0)
+  page.value = Number(meta.page || page.value)
+  pageSize.value = Number(meta.page_size || pageSize.value)
 }
 
 function openCreate() {
@@ -155,6 +163,16 @@ async function save() {
     await fetchList()
   } finally {
     saving.value = false
+  }
+}
+
+async function removeCustomer(row) {
+  try {
+    await deleteCustomer(row.id)
+    ElMessage.success('客户删除成功')
+    await fetchList()
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '删除失败')
   }
 }
 
