@@ -1,8 +1,8 @@
 from sqlmodel import Session, select
 
-from app.core.errors import BadRequestError, NotFoundError
-from app.models import Product, Sale, SaleItem, Customer
-from app.schemas.pricing import PricingLastResponse, PricingHistoryItem, ProductTrendItem
+from app.core.errors import NotFoundError
+from app.models import Customer, CustomerContact, Product, Sale, SaleItem
+from app.schemas.pricing import PricingHistoryItem, PricingLastResponse, ProductTrendItem
 
 
 def last_pricing(session: Session, customer_id: int, product_id: int) -> PricingLastResponse:
@@ -31,15 +31,14 @@ def last_pricing(session: Session, customer_id: int, product_id: int) -> Pricing
     return PricingLastResponse(
         found=True,
         standard_price=product.standard_price,
-        last_price=si.sold_price,
+        last_price=si.unit_price or si.sold_price,
         last_date=sale.sale_date,
         last_qty=si.qty,
     )
 
 
 def pricing_history(session: Session, customer_id: int, product_id: int, limit: int = 20):
-    limit = int(limit or 20)
-    limit = max(1, min(limit, 200))
+    limit = max(1, min(int(limit or 20), 200))
 
     customer = session.get(Customer, customer_id)
     if not customer:
@@ -50,8 +49,9 @@ def pricing_history(session: Session, customer_id: int, product_id: int, limit: 
         raise NotFoundError("商品不存在")
 
     stmt = (
-        select(SaleItem, Sale)
+        select(SaleItem, Sale, CustomerContact)
         .join(Sale, Sale.id == SaleItem.sale_id)
+        .outerjoin(CustomerContact, CustomerContact.id == Sale.buyer_id)
         .where(Sale.customer_id == customer_id)
         .where(SaleItem.product_id == product_id)
         .order_by(Sale.sale_date.desc(), Sale.id.desc(), SaleItem.id.desc())
@@ -59,19 +59,21 @@ def pricing_history(session: Session, customer_id: int, product_id: int, limit: 
     )
     rows = session.exec(stmt).all()
     return [
-        PricingHistoryItem(
-            date=sale.sale_date,
-            qty=si.qty,
-            sold_price=si.sold_price,
-            sale_id=sale.id,
-        )
-        for (si, sale) in rows
+        {
+            "date": sale.sale_date,
+            "qty": si.qty,
+            "unit_price": si.unit_price or si.sold_price,
+            "sold_price": si.unit_price or si.sold_price,
+            "sale_id": sale.id,
+            "project": sale.project,
+            "buyer_name": buyer.name if buyer else sale.contact_name_snapshot,
+        }
+        for (si, sale, buyer) in rows
     ]
 
 
 def product_trend(session: Session, product_id: int, limit: int = 50):
-    limit = int(limit or 50)
-    limit = max(1, min(limit, 200))
+    limit = max(1, min(int(limit or 50), 200))
 
     product = session.get(Product, product_id)
     if not product:
@@ -91,7 +93,7 @@ def product_trend(session: Session, product_id: int, limit: int = 50):
         ProductTrendItem(
             date=sale.sale_date,
             qty=si.qty,
-            sold_price=si.sold_price,
+            sold_price=si.unit_price or si.sold_price,
             sale_id=sale.id,
             customer_id=c.id,
             customer_name=c.name,

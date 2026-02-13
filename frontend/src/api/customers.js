@@ -20,6 +20,20 @@ export function deleteCustomer(id) {
   return http.delete(`/api/customers/${id}`).then((r) => r.data)
 }
 
+export function listBuyers(customerId) {
+  return http.get(`/api/customers/${customerId}/buyers`).then((r) => r.data)
+}
+
+export function createBuyer(customerId, payload) {
+  return http.post(`/api/customers/${customerId}/buyers`, payload).then((r) => r.data)
+}
+
+export function getCustomerProductPriceHistory(customerId, productId, limit = 50) {
+  return http
+    .get(`/api/customers/${customerId}/products/${productId}/price_history`, { params: { limit } })
+    .then((r) => r.data)
+}
+
 export function searchCustomersApi(keyword) {
   return http
     .get('/api/customers', {

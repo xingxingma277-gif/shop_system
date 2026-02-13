@@ -11,3 +11,7 @@ export function listSalesApi(params) {
 export function getSaleApi(id) {
   return http.get(`/api/sales/${id}`).then((r) => r.data)
 }
+
+export function submitSalePayment(saleId, payload) {
+  return http.post(`/api/sales/${saleId}/payments`, payload).then((r) => r.data)
+}

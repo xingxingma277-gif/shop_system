@@ -11,7 +11,7 @@ def upsert_customer(session: Session, name: str, phone: str | None = None, addre
     c = session.exec(select(Customer).where(Customer.name == name)).first()
     if c:
         return c
-    c = Customer(name=name, phone=phone, address=address, is_active=True)
+    c = Customer(type="company", name=name, contact_name=name, phone=phone or "", address=address or "", is_active=True)
     session.add(c)
     session.flush()
     return c
@@ -97,6 +97,7 @@ def run_seed():
                         sale_id=sale.id,
                         product_id=prod.id,
                         qty=qty,
+                        unit_price=price,
                         sold_price=price,
                         line_total=line_total,
                         remark=remark,

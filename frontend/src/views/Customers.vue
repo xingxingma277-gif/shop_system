@@ -13,6 +13,8 @@
 
     <el-table :data="rows" border>
       <el-table-column prop="name" label="名称" min-width="220" />
+      <el-table-column prop="type" label="类型" width="100" />
+      <el-table-column prop="contact_name" label="联系人" width="120" />
       <el-table-column prop="phone" label="电话" width="160" />
       <el-table-column prop="address" label="地址" min-width="240" />
       <el-table-column label="状态" width="120">
@@ -50,6 +52,15 @@
       <el-form :model="form" label-width="90px">
         <el-form-item label="名称" required>
           <el-input v-model="form.name" />
+        </el-form-item>
+        <el-form-item label="类型" required>
+          <el-select v-model="form.type">
+            <el-option label="公司" value="company" />
+            <el-option label="个人" value="personal" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="联系人" required>
+          <el-input v-model="form.contact_name" />
         </el-form-item>
         <el-form-item label="电话">
           <el-input v-model="form.phone" />
@@ -92,6 +103,8 @@ const editId = ref(null)
 
 const form = reactive({
   name: '',
+  type: 'company',
+  contact_name: '',
   phone: '',
   address: '',
   is_active: true
@@ -99,6 +112,8 @@ const form = reactive({
 
 function resetForm() {
   form.name = ''
+  form.type = 'company'
+  form.contact_name = ''
   form.phone = ''
   form.address = ''
   form.is_active = true
@@ -129,6 +144,8 @@ function openEdit(row) {
   editing.value = true
   editId.value = row.id
   form.name = row.name
+  form.type = row.type || 'company'
+  form.contact_name = row.contact_name || ''
   form.phone = row.phone || ''
   form.address = row.address || ''
   form.is_active = !!row.is_active
@@ -145,16 +162,20 @@ async function save() {
     if (editing.value) {
       await updateCustomer(editId.value, {
         name: form.name,
-        phone: form.phone || null,
-        address: form.address || null,
+        type: form.type,
+        contact_name: form.contact_name,
+        phone: form.phone || '',
+        address: form.address || '',
         is_active: form.is_active
       })
       ElMessage.success('保存成功')
     } else {
       await createCustomer({
         name: form.name,
-        phone: form.phone || null,
-        address: form.address || null,
+        type: form.type,
+        contact_name: form.contact_name,
+        phone: form.phone || '',
+        address: form.address || '',
         is_active: form.is_active
       })
       ElMessage.success('创建成功')
