@@ -1,11 +1,12 @@
 from datetime import datetime
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.core.errors import BadRequestError, NotFoundError
 from app.core.time import utc_now
-from app.models import Customer, CustomerContact, Product, Sale, SaleItem
+from app.models import Customer, CustomerContact, Product, Sale, SaleItem, Payment, PaymentAllocation
 from app.schemas.sale import SaleItemRead, SaleRead, SaleSummary
 from app.services.pagination import paginate
 
@@ -220,10 +221,10 @@ def get_sale(session: Session, sale_id: int) -> SaleRead:
 
 
 def recompute_sale_payment(session: Session, sale: Sale):
-    paid = 0.0
-    for p in sale.payments:
-        paid += float(p.amount)
-    sale.paid_amount = round(paid, 2)
-    sale.ar_amount = round(float(sale.total_amount) - sale.paid_amount, 2)
+    paid_direct = float(session.exec(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.sale_id == sale.id)).one() or 0)
+    paid_alloc = float(session.exec(select(func.coalesce(func.sum(PaymentAllocation.amount), 0)).where(PaymentAllocation.sale_id == sale.id)).one() or 0)
+    paid = round(paid_direct + paid_alloc, 2)
+    sale.paid_amount = paid
+    sale.ar_amount = round(max(float(sale.total_amount) - sale.paid_amount, 0), 2)
     sale.payment_status = _compute_payment_status(float(sale.total_amount), float(sale.paid_amount))
     session.add(sale)

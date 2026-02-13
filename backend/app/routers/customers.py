@@ -8,7 +8,7 @@ from sqlmodel import Session
 from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_session
 from app.schemas.customer import BuyerCreate, BuyerRead, CustomerCreate, CustomerPage, CustomerRead, CustomerUpdate
-from app.schemas.payment import CustomerReceiptCreate
+from app.schemas.payment import CustomerPaymentAllocateCreate, CustomerReceiptCreate
 from app.services import buyer_service, customer_service, payment_service, pricing_service, statement_service
 
 router = APIRouter(prefix="/api/customers", tags=["Customers"])
@@ -109,7 +109,7 @@ def customer_statement(
     )
     pages = ceil(total / page_size) if page_size else 0
     meta = {"total": int(total), "page": page, "page_size": page_size, "pages": pages}
-    return {"items": items, "meta": meta, "summary": summary, "total": int(total), "page": page, "page_size": page_size}
+    return {"items": items, "meta": meta, "summary": summary}
 
 
 @router.get("/{customer_id}/statement/export")
@@ -137,6 +137,58 @@ def export_customer_statement(
     return PlainTextResponse(content, media_type="text/csv; charset=utf-8")
 
 
+@router.get("/{customer_id}/open_sales")
+def customer_open_sales(
+    customer_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    q: str | None = Query(None),
+    start_date: str | None = Query(None),
+    end_date: str | None = Query(None),
+    session: Session = Depends(get_session),
+):
+    try:
+        items, total = payment_service.list_open_sales(
+            session,
+            customer_id,
+            page=page,
+            page_size=page_size,
+            q=q,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+    pages = ceil(total / page_size) if page_size else 0
+    return {"items": items, "meta": {"total": total, "page": page, "page_size": page_size, "pages": pages}}
+
+
+@router.post("/{customer_id}/payments/allocate")
+def customer_payment_allocate(customer_id: int, payload: CustomerPaymentAllocateCreate, session: Session = Depends(get_session)):
+    try:
+        return payment_service.allocate_to_sales(
+            session,
+            customer_id=customer_id,
+            sale_ids=payload.sale_ids,
+            amount=payload.amount,
+            method=payload.method,
+            paid_at=payload.paid_at,
+            note=payload.note,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+    except BadRequestError as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
+
+
+@router.get("/{customer_id}/payments/{payment_id}/allocations")
+def customer_payment_allocations(customer_id: int, payment_id: int, session: Session = Depends(get_session)):
+    try:
+        return payment_service.get_payment_allocations(session, customer_id=customer_id, payment_id=payment_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+
+
 @router.post("/{customer_id}/receipts")
 def create_customer_receipt(customer_id: int, payload: CustomerReceiptCreate, session: Session = Depends(get_session)):
     try:
@@ -153,8 +205,6 @@ def create_customer_receipt(customer_id: int, payload: CustomerReceiptCreate, se
         raise HTTPException(status_code=404, detail=exc.message)
     except BadRequestError as exc:
         raise HTTPException(status_code=400, detail=exc.message)
-
-
 
 
 @router.get("/{customer_id}/payments")

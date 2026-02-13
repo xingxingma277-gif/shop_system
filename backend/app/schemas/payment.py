@@ -13,7 +13,7 @@ class PaymentCreate(BaseModel):
 class PaymentRead(BaseModel):
     id: int
     customer_id: int
-    sale_id: int
+    sale_id: Optional[int] = None
     receipt_no: Optional[str] = None
     pay_type: str
     amount: float
@@ -22,6 +22,12 @@ class PaymentRead(BaseModel):
     note: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class PaymentAllocationRead(BaseModel):
+    sale_id: int
+    sale_no: Optional[str] = None
+    amount: float
 
 
 class BatchPaymentApplyIn(BaseModel):
@@ -51,6 +57,14 @@ class CustomerReceiptCreate(BaseModel):
     amount: float = Field(gt=0)
     note: Optional[str] = None
     allocate_mode: str = Field(default="oldest_first")
+
+
+class CustomerPaymentAllocateCreate(BaseModel):
+    sale_ids: List[int] = Field(min_length=1)
+    amount: float = Field(gt=0)
+    method: str = Field(default="transfer")
+    paid_at: Optional[str] = None
+    note: Optional[str] = None
 
 
 class CustomerPaymentPage(BaseModel):

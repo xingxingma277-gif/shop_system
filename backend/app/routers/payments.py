@@ -28,7 +28,7 @@ def create_payment(payload: PaymentCreate, session: Session = Depends(get_sessio
             "pay_type": p.pay_type,
             "amount": p.amount,
             "method": p.method,
-            "paid_at": p.paid_at.isoformat(),
+            "paid_at": p.paid_at.isoformat().replace("+00:00", "Z"),
             "note": p.note,
         }
     except NotFoundError as exc:

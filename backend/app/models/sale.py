@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from .customer import Customer
     from .sale_item import SaleItem
     from .payment import Payment
+    from .payment_allocation import PaymentAllocation
 
 
 class Sale(SQLModel, table=True):
@@ -47,6 +48,11 @@ class Sale(SQLModel, table=True):
     )
 
     payments: Mapped[list["Payment"]] = Relationship(
+        back_populates="sale",
+        sa_relationship_kwargs={"lazy": "selectin", "cascade": "all, delete-orphan"},
+    )
+
+    payment_allocations: Mapped[list["PaymentAllocation"]] = Relationship(
         back_populates="sale",
         sa_relationship_kwargs={"lazy": "selectin", "cascade": "all, delete-orphan"},
     )
