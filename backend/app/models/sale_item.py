@@ -19,12 +19,11 @@ class SaleItem(SQLModel, table=True):
     product_id: int = Field(foreign_key="product.id", index=True)
 
     qty: float = Field(gt=0)
-    sold_price: float = Field(ge=0)
+    unit_price: float = Field(default=0, ge=0)
+    sold_price: float = Field(default=0, ge=0)
     line_total: float = Field(default=0, ge=0, nullable=False)
 
     remark: Optional[str] = Field(default=None, max_length=200)
-
-    # ✅ 关键修复：必须有类型注解
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
 
     sale: Mapped[Optional["Sale"]] = Relationship(back_populates="items")

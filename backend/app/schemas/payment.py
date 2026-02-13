@@ -2,21 +2,20 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 
 
-PAYMENT_METHODS = {"现金", "微信", "支付宝", "转账", "其他"}
-
-
 class PaymentCreate(BaseModel):
     sale_id: int
     amount: float = Field(gt=0)
-    method: str = Field(default="转账")
-    paid_at: Optional[str] = None  # ISO string, optional
+    method: str = Field(default="transfer")
+    paid_at: Optional[str] = None
     note: Optional[str] = Field(default=None, max_length=255)
 
 
 class PaymentRead(BaseModel):
     id: int
     customer_id: int
-    sale_id: int
+    sale_id: Optional[int] = None
+    receipt_no: Optional[str] = None
+    pay_type: str
     amount: float
     method: str
     paid_at: str
@@ -25,11 +24,17 @@ class PaymentRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PaymentAllocationRead(BaseModel):
+    sale_id: int
+    sale_no: Optional[str] = None
+    amount: float
+
+
 class BatchPaymentApplyIn(BaseModel):
     customer_id: int
     sale_ids: List[int] = Field(min_length=1)
     total_amount: float = Field(gt=0)
-    method: str = Field(default="转账")
+    method: str = Field(default="transfer")
     paid_at: Optional[str] = None
     note: Optional[str] = Field(default=None, max_length=255)
 
@@ -45,3 +50,23 @@ class BatchPaymentAllocationRow(BaseModel):
 class BatchPaymentApplyOut(BaseModel):
     created_payments: int
     allocations: List[BatchPaymentAllocationRow]
+
+
+class CustomerReceiptCreate(BaseModel):
+    method: str = Field(default="transfer")
+    amount: float = Field(gt=0)
+    note: Optional[str] = None
+    allocate_mode: str = Field(default="oldest_first")
+
+
+class CustomerPaymentAllocateCreate(BaseModel):
+    sale_ids: List[int] = Field(min_length=1)
+    amount: float = Field(gt=0)
+    method: str = Field(default="transfer")
+    paid_at: Optional[str] = None
+    note: Optional[str] = None
+
+
+class CustomerPaymentPage(BaseModel):
+    items: List[PaymentRead]
+    meta: dict
