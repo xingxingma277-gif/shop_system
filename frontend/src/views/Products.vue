@@ -28,9 +28,14 @@
           />
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="140" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-popconfirm title="确认删除该商品？删除后不可恢复。" @confirm="removeProduct(row)">
+            <template #reference>
+              <el-button link type="danger">删除</el-button>
+            </template>
+          </el-popconfirm>
         </template>
       </el-table-column>
     </el-table>
@@ -74,7 +79,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 
-import { listProducts, createProduct, updateProduct, toggleProductActive } from '../api/products'
+import { listProducts, createProduct, updateProduct, toggleProductActive, deleteProduct } from '../api/products'
 import { money } from '../utils/format'
 
 const q = ref('')
@@ -163,9 +168,18 @@ async function save() {
 }
 
 async function toggle(row) {
-  // 后端是 toggle_active：因此这里直接调用接口并用返回值覆盖
   const updated = await toggleProductActive(row.id)
   Object.assign(row, updated)
+}
+
+async function removeProduct(row) {
+  try {
+    await deleteProduct(row.id)
+    ElMessage.success('商品删除成功')
+    await fetchList()
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '删除失败')
+  }
 }
 
 onMounted(fetchList)

@@ -18,15 +18,12 @@ class Payment(SQLModel, table=True):
     customer_id: int = Field(foreign_key="customer.id", index=True)
     sale_id: int = Field(foreign_key="sale.id", index=True)
 
+    pay_type: str = Field(default="partial", max_length=20, index=True)
     amount: float = Field(gt=0)
-    method: str = Field(default="转账", max_length=20, index=True)  # 现金/微信/支付宝/转账/其他
+    method: str = Field(default="transfer", max_length=20, index=True)
 
-    # ✅ 关键修复：必须有类型注解
     paid_at: datetime = Field(default_factory=utc_now, nullable=False, index=True)
-
     note: Optional[str] = Field(default=None, max_length=255)
-
-    # ✅ 关键修复：必须有类型注解
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
 
     customer: Mapped[Optional["Customer"]] = Relationship(back_populates="payments")

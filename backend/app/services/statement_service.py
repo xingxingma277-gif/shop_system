@@ -4,8 +4,7 @@ from typing import Optional, Tuple, List
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from app.models import Sale, Payment
-from app.services.payment_service import calc_status
+from app.models import CustomerContact, Payment, Sale
 
 
 def _parse_iso(dt_str: Optional[str]) -> Optional[datetime]:
@@ -26,7 +25,6 @@ def get_statement(
     start_dt = _parse_iso(start_date)
     end_dt = _parse_iso(end_date)
 
-    # total count
     count_stmt = select(func.count()).select_from(Sale).where(Sale.customer_id == customer_id)
     if start_dt:
         count_stmt = count_stmt.where(Sale.sale_date >= start_dt)
@@ -34,64 +32,43 @@ def get_statement(
         count_stmt = count_stmt.where(Sale.sale_date <= end_dt)
     total = int(session.exec(count_stmt).one())
 
-    # list with paid sum
-    paid_sum = func.coalesce(func.sum(Payment.amount), 0).label("paid_amount")
-    stmt = (
-        select(Sale, paid_sum)
-        .outerjoin(Payment, Payment.sale_id == Sale.id)
-        .where(Sale.customer_id == customer_id)
-    )
+    stmt = select(Sale, CustomerContact).outerjoin(CustomerContact, CustomerContact.id == Sale.buyer_id).where(Sale.customer_id == customer_id)
     if start_dt:
         stmt = stmt.where(Sale.sale_date >= start_dt)
     if end_dt:
         stmt = stmt.where(Sale.sale_date <= end_dt)
 
-    stmt = (
-        stmt.group_by(Sale.id)
-        .order_by(Sale.sale_date.desc(), Sale.id.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-
-    rows = session.exec(stmt).all()
+    rows = session.exec(
+        stmt.order_by(Sale.sale_date.desc(), Sale.id.desc()).offset((page - 1) * page_size).limit(page_size)
+    ).all()
 
     items = []
-    for sale, paid_amount in rows:
-        paid_amount = round(float(paid_amount or 0), 2)
-        balance = round(float(sale.total_amount) - paid_amount, 2)
+    for sale, buyer in rows:
         items.append(
             {
                 "id": sale.id,
+                "date": sale.sale_date.isoformat(),
                 "sale_date": sale.sale_date.isoformat(),
-                "note": sale.note,
+                "sale_no": f"S{sale.id}",
+                "project": sale.project,
+                "project_name": sale.project,
+                "buyer_name": buyer.name if buyer else sale.contact_name_snapshot,
+                "contact_name_snapshot": buyer.name if buyer else sale.contact_name_snapshot,
+                "total": round(float(sale.total_amount), 2),
                 "total_amount": round(float(sale.total_amount), 2),
-                "paid_amount": paid_amount,
-                "balance": balance,
-                "payment_status": calc_status(paid_amount, balance),
-                "contact_name_snapshot": sale.contact_name_snapshot,
-                "project_name": sale.project_name,
+                "paid": round(float(sale.paid_amount), 2),
+                "paid_amount": round(float(sale.paid_amount), 2),
+                "unpaid": round(float(sale.ar_amount), 2),
+                "balance": round(float(sale.ar_amount), 2),
+                "ar": round(float(sale.ar_amount), 2),
+                "status": sale.payment_status,
+                "payment_status": sale.payment_status,
+                "note": sale.note,
             }
         )
 
-    # summary
-    total_sales_stmt = select(func.coalesce(func.sum(Sale.total_amount), 0)).where(Sale.customer_id == customer_id)
-    if start_dt:
-        total_sales_stmt = total_sales_stmt.where(Sale.sale_date >= start_dt)
-    if end_dt:
-        total_sales_stmt = total_sales_stmt.where(Sale.sale_date <= end_dt)
-    total_sales = float(session.exec(total_sales_stmt).one() or 0)
-
-    total_paid_stmt = (
-        select(func.coalesce(func.sum(Payment.amount), 0))
-        .select_from(Payment)
-        .join(Sale, Sale.id == Payment.sale_id)
-        .where(Sale.customer_id == customer_id)
-    )
-    if start_dt:
-        total_paid_stmt = total_paid_stmt.where(Sale.sale_date >= start_dt)
-    if end_dt:
-        total_paid_stmt = total_paid_stmt.where(Sale.sale_date <= end_dt)
-    total_paid = float(session.exec(total_paid_stmt).one() or 0)
+    total_sales = float(session.exec(select(func.coalesce(func.sum(Sale.total_amount), 0)).where(Sale.customer_id == customer_id)).one() or 0)
+    total_paid = float(session.exec(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.customer_id == customer_id)).one() or 0)
 
     summary = {
         "total_sales_amount": round(total_sales, 2),
