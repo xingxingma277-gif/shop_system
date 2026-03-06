@@ -21,30 +21,31 @@ def _to_iso_z(dt: datetime) -> str:
 
 
 def list_sales_transactions(
-    session: Session,
-    *,
-    page: int,
-    page_size: int,
-    start_date: Optional[str],
-    end_date: Optional[str],
-    q: Optional[str],
-    status: Optional[str],
+        session: Session,
+        *,
+        page: int,
+        page_size: int,
+        start_date: Optional[str],
+        end_date: Optional[str],
+        q: Optional[str],
+        status: Optional[str],
 ):
     start_dt = _parse_iso(start_date)
     end_dt = _parse_iso(end_date, end_of_day=True)
 
     stmt = select(Sale, Customer).join(Customer, Customer.id == Sale.customer_id)
-    # 交易记录仅展示“已进入结算动作”的单据，避免开单保存即进入交易流水
-    stmt = stmt.where(Sale.payment_status.in_(["partial", "paid"]))
+
+    # 修复：允许显示所有单据，不再仅仅过滤出 partial 或 paid 的数据
     if start_dt:
         stmt = stmt.where(Sale.sale_date >= start_dt)
     if end_dt:
         stmt = stmt.where(Sale.sale_date <= end_dt)
-    if status in {"partial", "paid"}:
+    if status in {"unpaid", "partial", "paid"}:
         stmt = stmt.where(Sale.payment_status == status)
     if q and q.strip():
         like = f"%{q.strip()}%"
-        stmt = stmt.outerjoin(SaleItem, SaleItem.sale_id == Sale.id).outerjoin(Product, Product.id == SaleItem.product_id).where(
+        stmt = stmt.outerjoin(SaleItem, SaleItem.sale_id == Sale.id).outerjoin(Product,
+                                                                               Product.id == SaleItem.product_id).where(
             or_(
                 Sale.sale_no.ilike(like),
                 Customer.name.ilike(like),
@@ -54,7 +55,7 @@ def list_sales_transactions(
 
     rows_all = session.exec(stmt.order_by(Sale.sale_date.desc(), Sale.id.desc())).all()
     total = len(rows_all)
-    rows = rows_all[(page - 1) * page_size : page * page_size]
+    rows = rows_all[(page - 1) * page_size: page * page_size]
     items = [
         {
             "occurred_at": _to_iso_z(s.sale_date),
@@ -73,14 +74,14 @@ def list_sales_transactions(
 
 
 def list_payment_transactions(
-    session: Session,
-    *,
-    page: int,
-    page_size: int,
-    start_date: Optional[str],
-    end_date: Optional[str],
-    q: Optional[str],
-    method: Optional[str],
+        session: Session,
+        *,
+        page: int,
+        page_size: int,
+        start_date: Optional[str],
+        end_date: Optional[str],
+        q: Optional[str],
+        method: Optional[str],
 ):
     start_dt = _parse_iso(start_date)
     end_dt = _parse_iso(end_date, end_of_day=True)
@@ -129,5 +130,5 @@ def list_payment_transactions(
         raw.append(row)
 
     total = len(raw)
-    items = raw[(page - 1) * page_size : page * page_size]
+    items = raw[(page - 1) * page_size: page * page_size]
     return items, total

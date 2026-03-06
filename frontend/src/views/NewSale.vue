@@ -48,6 +48,11 @@
         </template>
       </el-table-column>
       <el-table-column label="小计" width="120"><template #default="{ row }">{{ money((row.qty || 0) * (row.unit_price || 0)) }}</template></el-table-column>
+      <el-table-column label="操作" width="80" fixed="right">
+        <template #default="{ $index }">
+          <el-button type="danger" link @click="removeRow($index)">删除</el-button>
+        </template>
+      </el-table-column>
     </el-table>
   </el-card>
 
@@ -118,8 +123,11 @@ const saving = ref(false)
 const buyerDialog = ref(false)
 const buyerForm = reactive({ name: '' })
 const rowSeed = ref(1)
+
 const newItemRow = () => ({ _key: rowSeed.value++, product_id: null, product_name: '', spec: '', quantity: 1, qty: 1, unit: '', unit_price: 0, amount: 0, subtotal: 0, remark: '', note: null, history: [], lastPrice: null })
-const items = reactive([newItemRow()])
+// 修复：改为 ref 以确保响应式追加能够立刻渲染
+const items = ref([newItemRow()])
+
 const historyDialog = ref(false)
 const historyRows = ref([])
 const historyMeta = reactive({ total: 0 })
@@ -197,16 +205,27 @@ async function openHistory(row) {
   historyDialog.value = true
 }
 
+// 修复：补全抽屉渲染逻辑
 async function openHistoryDetail(row) {
   if (!row?.sale_id) return
   selectedHistoryPriceRow.value = row
-  // 提供可追溯入口：点击任意历史行可进入对应订单详情
-  await router.push(`/sales/${row.sale_id}`)
+  try {
+    const data = await getSaleApi(row.sale_id)
+    historyDetail.value = data
+    historyDetailVisible.value = true
+  } catch (err) {
+    ElMessage.error('无法加载订单详情')
+  }
 }
 
 function addRow() {
-  items.push(newItemRow())
+  items.value.push(newItemRow())
 }
+
+function removeRow(index) {
+  items.value.splice(index, 1)
+}
+
 function openBuyerDialog() { buyerDialog.value = true }
 
 async function submitBuyer() {
@@ -222,7 +241,8 @@ async function submit() {
   if (saving.value) return
   if (!form.customer_id) return ElMessage.warning('客户必填')
   if (showBuyer.value && !form.buyer_id) return ElMessage.warning('公司客户需选择拿货人')
-  const validItems = items.filter((r) => r.product_id && Number(r.qty) > 0).map((r) => ({ product_id: r.product_id, qty: Number(r.qty), unit_price: Number(r.unit_price || 0), note: null }))
+
+  const validItems = items.value.filter((r) => r.product_id && Number(r.qty) > 0).map((r) => ({ product_id: r.product_id, qty: Number(r.qty), unit_price: Number(r.unit_price || 0), note: null }))
   if (!validItems.length) return ElMessage.warning('请至少添加 1 行商品')
 
   saving.value = true
@@ -232,7 +252,9 @@ async function submit() {
     ElMessage.success('销售单已创建，请继续结算')
     await router.push(`/sales/${sale.id}/settlement`)
   } catch (err) {
-    ElMessage.error(err?.response?.data?.detail || err?.message || '单据保存失败')
+    let msg = err?.response?.data?.detail || err?.message || '单据保存失败'
+    if (Array.isArray(msg)) msg = msg[0]?.msg || '参数校验失败'
+    ElMessage.error(String(msg))
   } finally {
     saving.value = false
   }

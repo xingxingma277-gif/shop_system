@@ -66,11 +66,17 @@ const form = reactive({
   payment_note: '',
 })
 
+// 修复：提升操作体验，部分付款时默认给一个欠款金额
 function setStatus(status) {
   form.settlement_status = status
   if (status === 'UNPAID') {
     form.paid_amount = 0
     form.payment_method = null
+  }
+  if (status === 'PARTIAL' && sale.value) {
+    if (form.paid_amount === 0) {
+      form.paid_amount = Number(sale.value.ar_amount)
+    }
   }
   if (status === 'PAID' && sale.value) {
     form.paid_amount = Number(sale.value.total_amount)
@@ -106,7 +112,12 @@ async function submit() {
     ElMessage.success(okMsg)
     await router.push(`/sales/${saleId}`)
   } catch (err) {
-    ElMessage.error(err?.response?.data?.detail || err?.message || '结算保存失败')
+    // 修复：解析 Pydantic 的 422 验证报错
+    let msg = err?.response?.data?.detail || err?.message || '结算保存失败'
+    if (Array.isArray(msg)) {
+      msg = msg[0]?.msg || '参数填写有误'
+    }
+    ElMessage.error(String(msg))
   } finally {
     saving.value = false
   }

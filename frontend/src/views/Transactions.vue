@@ -8,6 +8,7 @@
           <el-date-picker v-model="salesFilters.dateRange" type="daterange" range-separator="~" start-placeholder="开始" end-placeholder="结束" />
           <el-input v-model="salesFilters.q" placeholder="单号/客户名/商品名" style="width:240px" clearable />
           <el-select v-model="salesFilters.status" clearable placeholder="状态" style="width:140px">
+            <el-option label="未结清" value="unpaid" />
             <el-option label="部分结清" value="partial" />
             <el-option label="已结清" value="paid" />
           </el-select>
