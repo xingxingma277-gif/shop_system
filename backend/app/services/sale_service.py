@@ -6,7 +6,7 @@ from sqlmodel import Session, select
 
 from app.core.errors import BadRequestError, NotFoundError
 from app.core.time import utc_now
-from app.models import Customer, CustomerContact, Product, Sale, SaleItem, Payment, PaymentAllocation
+from app.models import Customer, CustomerContact, InventoryTxn, Product, Sale, SaleItem, Payment, PaymentAllocation
 from app.schemas.sale import SaleItemRead, SaleRead, SaleSummary
 from app.services.pagination import paginate
 
@@ -135,6 +135,22 @@ def create_sale(session: Session, data) -> SaleRead:
             line_total = round(qty * price, 2)
             total += line_total
 
+            p = prod_map[it.product_id]
+            before_qty = float(p.stock_quantity or 0)
+            p.stock_quantity = round(before_qty - qty, 2)
+            session.add(
+                InventoryTxn(
+                    product_id=p.id,
+                    change_qty=round(-qty, 2),
+                    after_qty=float(p.stock_quantity),
+                    biz_type="sale",
+                    biz_id=sale.id,
+                    sale_id=sale.id,
+                    note=f"销售单{sale.sale_no}扣减",
+                )
+            )
+            session.add(p)
+
             si = SaleItem(
                 sale_id=sale.id,
                 product_id=it.product_id,
@@ -171,6 +187,16 @@ def update_settlement(session: Session, *, sale_id: int, settlement_status: str,
     return get_sale(session, sale_id)
 
 
+def _sale_gross_profit(session: Session, sale_id: int) -> float:
+    rows = session.exec(
+        select(SaleItem, Product).join(Product, Product.id == SaleItem.product_id).where(SaleItem.sale_id == sale_id)
+    ).all()
+    gp = 0.0
+    for si, p in rows:
+        gp += (float(si.unit_price or si.sold_price) - float(p.standard_cost or 0)) * float(si.qty)
+    return round(gp, 2)
+
+
 def list_sales(session: Session, customer_id: int | None, page: int, page_size: int):
     stmt = select(Sale, Customer).join(Customer, Customer.id == Sale.customer_id)
     if customer_id:
@@ -192,6 +218,7 @@ def list_sales(session: Session, customer_id: int | None, page: int, page_size: 
             paid_amount=s.paid_amount,
             ar_amount=s.ar_amount,
             payment_status=s.payment_status,
+            gross_profit=_sale_gross_profit(session, s.id),
             biz_status=s.biz_status,
         )
         for (s, c) in rows
@@ -223,6 +250,7 @@ def get_sale(session: Session, sale_id: int) -> SaleRead:
             qty=si.qty,
             unit_price=si.unit_price or si.sold_price,
             line_total=si.line_total,
+            gross_profit=round((float(si.unit_price or si.sold_price) - float(p.standard_cost or 0)) * float(si.qty), 2),
             note=si.remark,
         )
         for (si, p) in item_rows
@@ -245,6 +273,7 @@ def get_sale(session: Session, sale_id: int) -> SaleRead:
         settlement_status=sale.settlement_status,
         payment_method=sale.payment_method,
         payment_note=sale.payment_note,
+        gross_profit=_sale_gross_profit(session, sale.id),
         biz_status=sale.biz_status,
         created_at=sale.created_at,
         items=items,

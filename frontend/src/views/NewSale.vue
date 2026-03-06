@@ -44,6 +44,7 @@
             <el-button circle plain size="large" :disabled="!canQueryPricing(row)" style="margin-left:8px" @click="openHistory(row)"><el-icon><Clock /></el-icon></el-button>
           </el-tooltip>
           <el-tag v-if="row.lastPrice != null" type="warning" style="margin-left:8px">上次拿价：¥{{ money(row.lastPrice) }}</el-tag>
+          <el-tag v-if="showPriceDeviation(row)" type="danger" style="margin-left:8px">偏离上次价 {{ priceDeviationPercent(row) }}%</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="小计" width="120"><template #default="{ row }">{{ money((row.qty || 0) * (row.unit_price || 0)) }}</template></el-table-column>
@@ -154,6 +155,16 @@ async function onProductChanged(row) {
 
 function canQueryPricing(row) {
   return !!form.customer_id && !!row.product_id
+}
+
+function priceDeviationPercent(row) {
+  if (row.lastPrice == null || Number(row.lastPrice) === 0) return 0
+  return Math.round((Math.abs(Number(row.unit_price || 0) - Number(row.lastPrice)) / Number(row.lastPrice)) * 100)
+}
+
+function showPriceDeviation(row) {
+  if (row.lastPrice == null) return false
+  return priceDeviationPercent(row) >= 20
 }
 
 function applyLastPrice(row) {

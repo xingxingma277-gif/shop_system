@@ -15,9 +15,12 @@
       <el-table-column prop="name" label="名称" min-width="220" />
       <el-table-column prop="sku" label="SKU" width="160" />
       <el-table-column prop="unit" label="单位" width="100" />
-      <el-table-column label="标准价" width="140">
+      <el-table-column label="标准价" width="120">
         <template #default="{ row }"><span class="money">¥{{ money(row.standard_price) }}</span></template>
       </el-table-column>
+      <el-table-column label="成本价" width="120"><template #default="{ row }"><span class="money">¥{{ money(row.standard_cost || 0) }}</span></template></el-table-column>
+      <el-table-column label="库存" width="120"><template #default="{ row }"><span :style="{color: Number(row.stock_quantity||0) <= Number(row.stock_warning_threshold||0) ? '#d4380d' : 'inherit'}">{{ row.stock_quantity }}</span></template></el-table-column>
+      <el-table-column label="预警" width="100"><template #default="{ row }">{{ row.stock_warning_threshold || 0 }}</template></el-table-column>
       <el-table-column label="状态" width="140">
         <template #default="{ row }">
           <el-switch
@@ -65,6 +68,15 @@
         <el-form-item label="标准价" required>
           <el-input-number v-model="form.standard_price" :min="0" :step="1" />
         </el-form-item>
+        <el-form-item label="成本价">
+          <el-input-number v-model="form.standard_cost" :min="0" :step="1" />
+        </el-form-item>
+        <el-form-item label="库存数量">
+          <el-input-number v-model="form.stock_quantity" :step="1" />
+        </el-form-item>
+        <el-form-item label="预警阈值">
+          <el-input-number v-model="form.stock_warning_threshold" :min="0" :step="1" />
+        </el-form-item>
       </el-form>
 
       <template #footer>
@@ -97,7 +109,10 @@ const form = reactive({
   name: '',
   sku: '',
   unit: '',
-  standard_price: 0
+  standard_price: 0,
+  standard_cost: 0,
+  stock_quantity: 0,
+  stock_warning_threshold: 0
 })
 
 function resetForm() {
@@ -105,6 +120,9 @@ function resetForm() {
   form.sku = ''
   form.unit = ''
   form.standard_price = 0
+  form.standard_cost = 0
+  form.stock_quantity = 0
+  form.stock_warning_threshold = 0
 }
 
 async function fetchList() {
@@ -132,6 +150,9 @@ function openEdit(row) {
   form.sku = row.sku || ''
   form.unit = row.unit || ''
   form.standard_price = Number(row.standard_price || 0)
+  form.standard_cost = Number(row.standard_cost || 0)
+  form.stock_quantity = Number(row.stock_quantity || 0)
+  form.stock_warning_threshold = Number(row.stock_warning_threshold || 0)
   dialogOpen.value = true
 }
 
@@ -147,7 +168,10 @@ async function save() {
         name: form.name,
         sku: form.sku || null,
         unit: form.unit || null,
-        standard_price: Number(form.standard_price || 0)
+        standard_price: Number(form.standard_price || 0),
+        standard_cost: Number(form.standard_cost || 0),
+        stock_quantity: Number(form.stock_quantity || 0),
+        stock_warning_threshold: Number(form.stock_warning_threshold || 0)
       })
       ElMessage.success('保存成功')
     } else {
@@ -156,6 +180,9 @@ async function save() {
         sku: form.sku || null,
         unit: form.unit || null,
         standard_price: Number(form.standard_price || 0),
+        standard_cost: Number(form.standard_cost || 0),
+        stock_quantity: Number(form.stock_quantity || 0),
+        stock_warning_threshold: Number(form.stock_warning_threshold || 0),
         is_active: true
       })
       ElMessage.success('创建成功')

@@ -141,3 +141,14 @@ def export_sale_excel(sale_id: int, session: Session = Depends(get_session)):
         media_type=media_type,
         headers={"Content-Disposition": f"attachment; filename={file_name}"},
     )
+
+
+@router.post("/{sale_id}/return", response_model=SaleRead)
+def return_sale(sale_id: int, payload: SaleOperationCreate, session: Session = Depends(get_session)):
+    try:
+        settlement_service.return_sale_stock(session, sale_id=sale_id, note=payload.note)
+        return sale_service.get_sale(session, sale_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+    except BadRequestError as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
