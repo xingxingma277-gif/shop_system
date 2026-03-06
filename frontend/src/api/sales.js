@@ -27,3 +27,8 @@ export function submitSalePayment(saleId, payload) {
 export function getSalePaymentRecords(saleId) {
   return http.get(`/api/sales/${saleId}/payment_records`).then((r) => r.data)
 }
+
+
+export function exportSaleExcel(saleId) {
+  return http.get(`/api/sales/${saleId}/export_excel`, { responseType: "blob" }).then((r) => r.data)
+}

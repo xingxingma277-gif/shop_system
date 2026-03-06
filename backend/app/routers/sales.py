@@ -1,6 +1,10 @@
+from io import BytesIO
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
+from app.core.config import SALE_EXCEL_TEMPLATE_PATH
 from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_session
 from app.schemas.sale import (
@@ -13,7 +17,7 @@ from app.schemas.sale import (
     SaleReverseSettlementCreate,
     SaleSettlementUpdate,
 )
-from app.services import payment_service, sale_service, settlement_service
+from app.services import payment_service, sale_export_service, sale_service, settlement_service
 
 router = APIRouter(prefix="/api/sales", tags=["Sales"])
 
@@ -122,3 +126,18 @@ def get_sale_operations(sale_id: int, session: Session = Depends(get_session)):
         return {"items": settlement_service.sale_operations(session, sale_id=sale_id)}
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message)
+
+
+@router.get("/{sale_id}/export_excel")
+def export_sale_excel(sale_id: int, session: Session = Depends(get_session)):
+    try:
+        content, media_type, ext = sale_export_service.export_sale_excel(session, sale_id=sale_id, template_path=SALE_EXCEL_TEMPLATE_PATH)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+
+    file_name = f"sales_list_{sale_id}.{ext}"
+    return StreamingResponse(
+        BytesIO(content),
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename={file_name}"},
+    )
