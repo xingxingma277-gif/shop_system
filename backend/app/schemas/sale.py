@@ -40,6 +40,15 @@ class SaleItemRead(SQLModel):
     note: Optional[str] = None
 
 
+class SaleOperationCreate(SQLModel):
+    note: Optional[str] = None
+
+
+class SaleReverseSettlementCreate(SQLModel):
+    amount: Optional[float] = None
+    note: Optional[str] = None
+
+
 class SaleRead(SQLModel):
     id: int
     sale_no: str
@@ -57,6 +66,7 @@ class SaleRead(SQLModel):
     settlement_status: str
     payment_method: Optional[str] = None
     payment_note: Optional[str] = None
+    biz_status: str = "NORMAL"
     created_at: datetime
     items: List[SaleItemRead] = []
 
@@ -74,6 +84,7 @@ class SaleSummary(SQLModel):
     paid_amount: float
     ar_amount: float
     payment_status: str
+    biz_status: str = "NORMAL"
 
 
 class SalePage(SQLModel):

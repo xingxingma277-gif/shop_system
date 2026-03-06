@@ -3,8 +3,17 @@ from sqlmodel import Session
 
 from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_session
-from app.schemas.sale import SaleCreate, SalePage, SalePaymentCreate, SalePaymentSubmitResponse, SaleRead, SaleSettlementUpdate
-from app.services import payment_service, sale_service
+from app.schemas.sale import (
+    SaleCreate,
+    SaleOperationCreate,
+    SalePage,
+    SalePaymentCreate,
+    SalePaymentSubmitResponse,
+    SaleRead,
+    SaleReverseSettlementCreate,
+    SaleSettlementUpdate,
+)
+from app.services import payment_service, sale_service, settlement_service
 
 router = APIRouter(prefix="/api/sales", tags=["Sales"])
 
@@ -81,5 +90,35 @@ def sale_payment_records(sale_id: int, session: Session = Depends(get_session)):
     try:
         items = payment_service.list_sale_payments(session, sale_id)
         return {'items': items}
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+
+
+@router.post("/{sale_id}/void", response_model=SaleRead)
+def void_sale(sale_id: int, payload: SaleOperationCreate, session: Session = Depends(get_session)):
+    try:
+        settlement_service.mark_sale_void(session, sale_id=sale_id, note=payload.note)
+        return sale_service.get_sale(session, sale_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+    except BadRequestError as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
+
+
+@router.post("/{sale_id}/reverse_settlement", response_model=SaleRead)
+def reverse_sale_settlement(sale_id: int, payload: SaleReverseSettlementCreate, session: Session = Depends(get_session)):
+    try:
+        settlement_service.reverse_settlement(session, sale_id=sale_id, amount=payload.amount, note=payload.note)
+        return sale_service.get_sale(session, sale_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+    except BadRequestError as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
+
+
+@router.get("/{sale_id}/operations")
+def get_sale_operations(sale_id: int, session: Session = Depends(get_session)):
+    try:
+        return {"items": settlement_service.sale_operations(session, sale_id=sale_id)}
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message)
