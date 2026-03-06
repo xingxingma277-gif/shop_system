@@ -1,12 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel
 from sqlmodel import Session
 
-from app.core.errors import NotFoundError
+from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_session
 from app.schemas.product import ProductCreate, ProductPage, ProductRead, ProductUpdate
 from app.services import product_service
 
 router = APIRouter(prefix="/api/products", tags=["Products"])
+
+
+class StockAdjustPayload(BaseModel):
+    change_qty: float
+    note: str | None = None
 
 
 @router.get("", response_model=ProductPage)
@@ -78,3 +84,13 @@ def toggle_active(
         return product_service.toggle_product_active(session, product_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message)
+
+
+@router.post("/{product_id}/stock/adjust", response_model=ProductRead)
+def adjust_product_stock(product_id: int, payload: StockAdjustPayload, session: Session = Depends(get_session)):
+    try:
+        return product_service.adjust_stock(session, product_id=product_id, change_qty=payload.change_qty, note=payload.note)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+    except BadRequestError as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
