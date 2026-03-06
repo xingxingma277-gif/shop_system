@@ -50,6 +50,15 @@ class SaleReverseSettlementCreate(SQLModel):
     note: Optional[str] = None
 
 
+class SaleOperationCreate(SQLModel):
+    note: Optional[str] = None
+
+
+class SaleReverseSettlementCreate(SQLModel):
+    amount: Optional[float] = None
+    note: Optional[str] = None
+
+
 class SaleRead(SQLModel):
     id: int
     sale_no: str
