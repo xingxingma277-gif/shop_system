@@ -12,3 +12,6 @@ CORS_ORIGINS = [
     for o in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
     if o.strip()
 ]
+
+
+SALE_EXCEL_TEMPLATE_PATH = os.getenv("SALE_EXCEL_TEMPLATE_PATH", "./templates/sales_template.xlsx")

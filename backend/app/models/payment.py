@@ -21,7 +21,7 @@ class Payment(SQLModel, table=True):
 
     receipt_no: Optional[str] = Field(default=None, max_length=40, index=True)
     pay_type: str = Field(default="partial", max_length=20, index=True)
-    amount: float = Field(gt=0)
+    amount: float = Field(nullable=False)
     method: str = Field(default="transfer", max_length=20, index=True)
 
     paid_at: datetime = Field(default_factory=utc_now, nullable=False, index=True)

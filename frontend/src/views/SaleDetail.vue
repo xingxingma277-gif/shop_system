@@ -39,22 +39,38 @@
 </template>
 
 <script setup>
-import dayjs from 'dayjs'
 import { onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
-import { getSaleApi } from '../api/sales'
-import { money } from '../utils/format'
+import { exportSaleExcel, getSaleApi } from '../api/sales'
+import { formatDateTime, money } from '../utils/format'
 
 const route = useRoute()
 const router = useRouter()
 const sale = ref(null)
 
-const fmt = (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-')
+const fmt = (v) => formatDateTime(v)
 const statusText = (v) => ({ unpaid: '未结清', partial: '部分结清', paid: '已结清', UNPAID: '未结清', PARTIAL: '部分结清', PAID: '已结清' }[v] || '-')
 const statusTag = (v) => ({ unpaid: 'danger', partial: 'warning', paid: 'success', UNPAID: 'danger', PARTIAL: 'warning', PAID: 'success' }[v] || 'info')
 const paymentMethodText = (v) => ({ cash: '现金', wechat: '微信', alipay: '支付宝', bank_transfer: '银行转账' }[v] || '-')
 
-function onPrint() { window.print() }
+async function onPrint() {
+  if (!sale.value?.id) return
+  try {
+    const blob = await exportSaleExcel(sale.value.id)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `销售清单_${sale.value.sale_no || sale.value.id}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    ElMessage.success('销售清单已导出')
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.detail || err?.message || '导出失败')
+  }
+}
 function onContinue() {
   if (sale.value) {
     localStorage.setItem('shop:new_sale_last', JSON.stringify({ customer_id: sale.value.customer_id, buyer_id: sale.value.buyer_id }))
