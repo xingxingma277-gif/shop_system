@@ -313,6 +313,8 @@ def allocate_to_sales(session: Session, *, customer_id: int, sale_ids: List[int]
             continue
         alloc = PaymentAllocation(payment_id=payment.id, sale_id=s.id, amount=applied)
         session.add(alloc)
+        # 修复：分配金额必须立即 Flush，确保 sum(allocations) 能够被看到
+        session.flush()
         remaining = round(remaining - applied, 2)
         recompute_sale_payment(session, s)
         allocations.append({"sale_id": s.id, "sale_no": s.sale_no, "amount": applied})

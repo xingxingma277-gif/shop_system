@@ -27,7 +27,7 @@
 
   <el-card shadow="never">
     <template #header><div class="card-header"><div style="font-weight:700;">商品明细</div><el-button @click="addRow">添加一行</el-button></div></template>
-    <el-table :data="items" border :row-key="rowKey">
+    <el-table :data="state.items" border :row-key="rowKey">
       <el-table-column label="商品" min-width="260">
         <template #default="{ row }">
           <el-select v-model="row.product_id" filterable remote clearable :remote-method="onSearchProducts" style="width:100%" @change="()=>onProductChanged(row)">
@@ -125,8 +125,11 @@ const buyerForm = reactive({ name: '' })
 const rowSeed = ref(1)
 
 const newItemRow = () => ({ _key: rowSeed.value++, product_id: null, product_name: '', spec: '', quantity: 1, qty: 1, unit: '', unit_price: 0, amount: 0, subtotal: 0, remark: '', note: null, history: [], lastPrice: null })
-// 修复：改为 ref 以确保响应式追加能够立刻渲染
-const items = ref([newItemRow()])
+
+// 修复：改用完全的 reactive 对象包裹，确保 Vue 3 深层追踪更新
+const state = reactive({
+  items: [newItemRow()]
+})
 
 const historyDialog = ref(false)
 const historyRows = ref([])
@@ -205,7 +208,6 @@ async function openHistory(row) {
   historyDialog.value = true
 }
 
-// 修复：补全抽屉渲染逻辑
 async function openHistoryDetail(row) {
   if (!row?.sale_id) return
   selectedHistoryPriceRow.value = row
@@ -219,11 +221,11 @@ async function openHistoryDetail(row) {
 }
 
 function addRow() {
-  items.value.push(newItemRow())
+  state.items.push(newItemRow())
 }
 
 function removeRow(index) {
-  items.value.splice(index, 1)
+  state.items.splice(index, 1)
 }
 
 function openBuyerDialog() { buyerDialog.value = true }
@@ -242,7 +244,7 @@ async function submit() {
   if (!form.customer_id) return ElMessage.warning('客户必填')
   if (showBuyer.value && !form.buyer_id) return ElMessage.warning('公司客户需选择拿货人')
 
-  const validItems = items.value.filter((r) => r.product_id && Number(r.qty) > 0).map((r) => ({ product_id: r.product_id, qty: Number(r.qty), unit_price: Number(r.unit_price || 0), note: null }))
+  const validItems = state.items.filter((r) => r.product_id && Number(r.qty) > 0).map((r) => ({ product_id: r.product_id, qty: Number(r.qty), unit_price: Number(r.unit_price || 0), note: null }))
   if (!validItems.length) return ElMessage.warning('请至少添加 1 行商品')
 
   saving.value = true

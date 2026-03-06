@@ -63,6 +63,8 @@ def apply_settlement_compat(
             note=payment_note,
         )
         session.add(pay)
+        # 修复：必须在此刻 Flush，否则接下来的 recompute_sale_payment 中的 SQL SUM 查不到这条新流水
+        session.flush()
 
     payment_service.recompute_sale_payment(session, sale)
     if settlement_status == "UNPAID":
@@ -124,6 +126,8 @@ def reverse_settlement(session: Session, *, sale_id: int, amount: Optional[float
         )
     )
     session.add(SaleOperation(sale_id=sale.id, op_type="REVERSE_SETTLEMENT", amount=reverse_amount, note=note))
+    # 修复：必须 Flush
+    session.flush()
     payment_service.recompute_sale_payment(session, sale)
     session.add(sale)
     session.commit()
