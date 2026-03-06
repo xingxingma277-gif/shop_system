@@ -1,10 +1,23 @@
+from io import BytesIO
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
+from app.core.config import SALE_EXCEL_TEMPLATE_PATH
 from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_session
-from app.schemas.sale import SaleCreate, SalePage, SalePaymentCreate, SalePaymentSubmitResponse, SaleRead, SaleSettlementUpdate
-from app.services import payment_service, sale_service
+from app.schemas.sale import (
+    SaleCreate,
+    SaleOperationCreate,
+    SalePage,
+    SalePaymentCreate,
+    SalePaymentSubmitResponse,
+    SaleRead,
+    SaleReverseSettlementCreate,
+    SaleSettlementUpdate,
+)
+from app.services import payment_service, sale_export_service, sale_service, settlement_service
 
 router = APIRouter(prefix="/api/sales", tags=["Sales"])
 
@@ -83,3 +96,59 @@ def sale_payment_records(sale_id: int, session: Session = Depends(get_session)):
         return {'items': items}
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message)
+
+
+@router.post("/{sale_id}/void", response_model=SaleRead)
+def void_sale(sale_id: int, payload: SaleOperationCreate, session: Session = Depends(get_session)):
+    try:
+        settlement_service.mark_sale_void(session, sale_id=sale_id, note=payload.note)
+        return sale_service.get_sale(session, sale_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+    except BadRequestError as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
+
+
+@router.post("/{sale_id}/reverse_settlement", response_model=SaleRead)
+def reverse_sale_settlement(sale_id: int, payload: SaleReverseSettlementCreate, session: Session = Depends(get_session)):
+    try:
+        settlement_service.reverse_settlement(session, sale_id=sale_id, amount=payload.amount, note=payload.note)
+        return sale_service.get_sale(session, sale_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+    except BadRequestError as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
+
+
+@router.get("/{sale_id}/operations")
+def get_sale_operations(sale_id: int, session: Session = Depends(get_session)):
+    try:
+        return {"items": settlement_service.sale_operations(session, sale_id=sale_id)}
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+
+
+@router.get("/{sale_id}/export_excel")
+def export_sale_excel(sale_id: int, session: Session = Depends(get_session)):
+    try:
+        content, media_type, ext = sale_export_service.export_sale_excel(session, sale_id=sale_id, template_path=SALE_EXCEL_TEMPLATE_PATH)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+
+    file_name = f"sales_list_{sale_id}.{ext}"
+    return StreamingResponse(
+        BytesIO(content),
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename={file_name}"},
+    )
+
+
+@router.post("/{sale_id}/return", response_model=SaleRead)
+def return_sale(sale_id: int, payload: SaleOperationCreate, session: Session = Depends(get_session)):
+    try:
+        settlement_service.return_sale_stock(session, sale_id=sale_id, note=payload.note)
+        return sale_service.get_sale(session, sale_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+    except BadRequestError as exc:
+        raise HTTPException(status_code=400, detail=exc.message)

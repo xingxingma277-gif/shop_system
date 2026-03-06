@@ -9,7 +9,7 @@ from app.core.time import utc_now
 from app.models import Customer, Payment, PaymentAllocation, Sale
 from app.services.sale_service import get_sale
 
-_ALLOWED_METHODS = {"cash", "wechat", "alipay", "bank", "transfer", "other", "现金", "微信", "支付宝", "银行卡", "转账", "其他"}
+_ALLOWED_METHODS = {"cash", "wechat", "alipay", "bank_transfer", "bank", "transfer", "other", "现金", "微信", "支付宝", "银行卡", "转账", "其他"}
 _ALLOWED_PAY_TYPES = {"paid_full", "credit", "partial"}
 
 
@@ -51,6 +51,9 @@ def recompute_sale_payment(session: Session, sale: Sale):
         sale.payment_status = "paid"
     else:
         sale.payment_status = "partial"
+    sale.settlement_status = {"unpaid": "UNPAID", "partial": "PARTIAL", "paid": "PAID"}[sale.payment_status]
+    if sale.payment_status == "unpaid":
+        sale.payment_method = None
     session.add(sale)
 
 

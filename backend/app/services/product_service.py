@@ -2,7 +2,7 @@ from sqlalchemy import func, or_
 from sqlmodel import Session, col, select
 
 from app.core.errors import BadRequestError, NotFoundError
-from app.models import Product, SaleItem
+from app.models import InventoryTxn, Product, SaleItem
 from app.services.pagination import paginate
 from app.services.utils import to_update_dict
 
@@ -40,6 +40,14 @@ def create_product(session: Session, data) -> Product:
         sku=(data.sku.strip() if data.sku else None),
         unit=(data.unit.strip() if data.unit else None),
         standard_price=float(data.standard_price or 0),
+        standard_cost=float(data.standard_cost or 0),
+        stock_quantity=float(data.stock_quantity or 0),
+        stock_warning_threshold=float(data.stock_warning_threshold or 0),
+        category=(data.category.strip() if data.category else None),
+        brand=(data.brand.strip() if data.brand else None),
+        barcode=(data.barcode.strip() if data.barcode else None),
+        spec=(data.spec.strip() if data.spec else None),
+        image=(data.image.strip() if data.image else None),
         is_active=bool(data.is_active),
     )
     session.add(product)
@@ -108,3 +116,17 @@ def get_product_or_404(session: Session, product_id: int) -> Product:
     if not product:
         raise NotFoundError("商品不存在")
     return product
+
+
+def adjust_stock(session: Session, *, product_id: int, change_qty: float, note: str | None = None) -> Product:
+    p = session.get(Product, product_id)
+    if not p:
+        raise NotFoundError("商品不存在")
+    if abs(float(change_qty)) <= 1e-9:
+        raise BadRequestError("调整数量不能为0")
+    p.stock_quantity = round(float(p.stock_quantity or 0) + float(change_qty), 2)
+    session.add(InventoryTxn(product_id=p.id, change_qty=float(change_qty), after_qty=float(p.stock_quantity), biz_type="manual_adjust", note=note))
+    session.add(p)
+    session.commit()
+    session.refresh(p)
+    return p

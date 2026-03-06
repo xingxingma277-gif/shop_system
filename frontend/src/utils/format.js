@@ -1,12 +1,27 @@
 import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
+
+dayjs.extend(utc)
+
+function parseBizDateTime(value) {
+  if (!value) return null
+  if (typeof value === 'string') {
+    const hasTimezone = /([zZ]|[+-]\d{2}:?\d{2})$/.test(value)
+    if (hasTimezone) return dayjs(value)
+    // backend SQLite may return UTC naive string, treat as UTC then convert local
+    return dayjs.utc(value).local()
+  }
+  return dayjs(value)
+}
 
 export function nowIsoLocal() {
   return dayjs().format('YYYY-MM-DDTHH:mm:ss')
 }
 
 export function d(value, fmt = 'YYYY-MM-DD') {
-  if (!value) return ''
-  return dayjs(value).format(fmt)
+  const dt = parseBizDateTime(value)
+  if (!dt || !dt.isValid()) return ''
+  return dt.format(fmt)
 }
 
 export function money(value, digits = 2) {
@@ -16,6 +31,7 @@ export function money(value, digits = 2) {
 }
 
 export function formatDateTime(value, fmt = 'YYYY-MM-DD HH:mm') {
-  if (!value) return '-'
-  return dayjs(value).format(fmt)
+  const dt = parseBizDateTime(value)
+  if (!dt || !dt.isValid()) return '-'
+  return dt.format(fmt)
 }

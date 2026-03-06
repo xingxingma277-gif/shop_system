@@ -34,11 +34,13 @@ def list_sales_transactions(
     end_dt = _parse_iso(end_date, end_of_day=True)
 
     stmt = select(Sale, Customer).join(Customer, Customer.id == Sale.customer_id)
+    # 交易记录仅展示“已进入结算动作”的单据，避免开单保存即进入交易流水
+    stmt = stmt.where(Sale.payment_status.in_(["partial", "paid"]))
     if start_dt:
         stmt = stmt.where(Sale.sale_date >= start_dt)
     if end_dt:
         stmt = stmt.where(Sale.sale_date <= end_dt)
-    if status in {"unpaid", "partial", "paid"}:
+    if status in {"partial", "paid"}:
         stmt = stmt.where(Sale.payment_status == status)
     if q and q.strip():
         like = f"%{q.strip()}%"

@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from .sale_item import SaleItem
     from .payment import Payment
     from .payment_allocation import PaymentAllocation
+    from .sale_operation import SaleOperation
 
 
 class Sale(SQLModel, table=True):
@@ -41,6 +42,7 @@ class Sale(SQLModel, table=True):
     settlement_status: str = Field(default="UNPAID", max_length=20, index=True)
     payment_method: Optional[str] = Field(default=None, max_length=30)
     payment_note: Optional[str] = Field(default=None, max_length=255)
+    biz_status: str = Field(default="NORMAL", max_length=20, index=True)
 
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
 
@@ -56,6 +58,11 @@ class Sale(SQLModel, table=True):
     )
 
     payment_allocations: Mapped[list["PaymentAllocation"]] = Relationship(
+        back_populates="sale",
+        sa_relationship_kwargs={"lazy": "selectin", "cascade": "all, delete-orphan"},
+    )
+
+    operations: Mapped[list["SaleOperation"]] = Relationship(
         back_populates="sale",
         sa_relationship_kwargs={"lazy": "selectin", "cascade": "all, delete-orphan"},
     )

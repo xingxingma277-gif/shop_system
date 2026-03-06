@@ -87,6 +87,11 @@ async function load() {
 }
 
 async function submit() {
+  if (saving.value) return
+  if (form.settlement_status !== 'UNPAID' && !form.payment_method) {
+    ElMessage.warning('请选择付款方式')
+    return
+  }
   saving.value = true
   try {
     await submitSaleSettlement(saleId, {
@@ -95,8 +100,13 @@ async function submit() {
       payment_method: form.settlement_status === 'UNPAID' ? null : form.payment_method,
       payment_note: form.payment_note || null,
     })
-    ElMessage.success('结算已保存')
-    router.push(`/sales/${saleId}`)
+    const okMsg = form.settlement_status === 'PAID'
+      ? '订单已结清'
+      : (form.settlement_status === 'PARTIAL' ? '已记录部分收款' : '结算已保存')
+    ElMessage.success(okMsg)
+    await router.push(`/sales/${saleId}`)
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.detail || err?.message || '结算保存失败')
   } finally {
     saving.value = false
   }
