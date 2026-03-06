@@ -3,7 +3,7 @@
     <template #header>
       <div class="card-header">
         <div style="font-weight:700;">新建拿货单</div>
-        <el-button type="primary" :loading="saving" @click="submit">保存单据</el-button>
+        <el-button type="primary" :loading="saving" @click="submit">保存并去结算</el-button>
       </div>
     </template>
 
@@ -62,7 +62,7 @@
       <el-table-column label="总金额" width="120"><template #default="{ row }">{{ money((row.qty || 0) * (row.unit_price || 0)) }}</template></el-table-column>
       <el-table-column label="操作" width="180">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openHistoryDetail(row)">查看明细</el-button>
+          <el-button link type="primary" @click="openHistoryDetail(row)">查看订单</el-button>
           <el-button link type="success" @click="useHistoryPrice(row)">使用该价</el-button>
         </template>
       </el-table-column>
@@ -119,7 +119,7 @@ const buyerDialog = ref(false)
 const buyerForm = reactive({ name: '' })
 const rowSeed = ref(1)
 const newItemRow = () => ({ _key: rowSeed.value++, product_id: null, product_name: '', spec: '', quantity: 1, qty: 1, unit: '', unit_price: 0, amount: 0, subtotal: 0, remark: '', note: null, history: [], lastPrice: null })
-const items = ref([newItemRow()])
+const items = reactive([newItemRow()])
 const historyDialog = ref(false)
 const historyRows = ref([])
 const historyMeta = reactive({ total: 0 })
@@ -200,12 +200,12 @@ async function openHistory(row) {
 async function openHistoryDetail(row) {
   if (!row?.sale_id) return
   selectedHistoryPriceRow.value = row
-  historyDetail.value = await getSaleApi(row.sale_id)
-  historyDetailVisible.value = true
+  // 提供可追溯入口：点击任意历史行可进入对应订单详情
+  await router.push(`/sales/${row.sale_id}`)
 }
 
 function addRow() {
-  items.value = [...items.value, newItemRow()]
+  items.push(newItemRow())
 }
 function openBuyerDialog() { buyerDialog.value = true }
 
@@ -219,16 +219,20 @@ async function submitBuyer() {
 }
 
 async function submit() {
+  if (saving.value) return
   if (!form.customer_id) return ElMessage.warning('客户必填')
   if (showBuyer.value && !form.buyer_id) return ElMessage.warning('公司客户需选择拿货人')
-  const validItems = items.value.filter((r) => r.product_id && Number(r.qty) > 0).map((r) => ({ product_id: r.product_id, qty: Number(r.qty), unit_price: Number(r.unit_price || 0), note: null }))
+  const validItems = items.filter((r) => r.product_id && Number(r.qty) > 0).map((r) => ({ product_id: r.product_id, qty: Number(r.qty), unit_price: Number(r.unit_price || 0), note: null }))
   if (!validItems.length) return ElMessage.warning('请至少添加 1 行商品')
 
   saving.value = true
   try {
     const sale = await createSale({ sale_no: form.sale_no, customer_id: form.customer_id, buyer_id: showBuyer.value ? form.buyer_id : null, project: form.project || null, note: form.note || null, items: validItems })
     form.sale_no = sale.sale_no
-    router.push(`/sales/${sale.id}/settlement`)
+    ElMessage.success('销售单已创建，请继续结算')
+    await router.push(`/sales/${sale.id}/settlement`)
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.detail || err?.message || '单据保存失败')
   } finally {
     saving.value = false
   }
