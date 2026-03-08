@@ -1,4 +1,6 @@
 from io import BytesIO
+import urllib.parse
+import traceback
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -37,10 +39,10 @@ def create_sale(payload: SaleCreate, session: Session = Depends(get_session)):
 
 @router.get("", response_model=SalePage)
 def get_sales(
-    customer_id: int | None = Query(None),
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    session: Session = Depends(get_session),
+        customer_id: int | None = Query(None),
+        page: int = Query(1, ge=1),
+        page_size: int = Query(20, ge=1, le=100),
+        session: Session = Depends(get_session),
 ):
     items, total, page, page_size = sale_service.list_sales(session, customer_id, page, page_size)
     return SalePage(items=items, total=int(total), page=page, page_size=page_size)
@@ -110,7 +112,8 @@ def void_sale(sale_id: int, payload: SaleOperationCreate, session: Session = Dep
 
 
 @router.post("/{sale_id}/reverse_settlement", response_model=SaleRead)
-def reverse_sale_settlement(sale_id: int, payload: SaleReverseSettlementCreate, session: Session = Depends(get_session)):
+def reverse_sale_settlement(sale_id: int, payload: SaleReverseSettlementCreate,
+                            session: Session = Depends(get_session)):
     try:
         settlement_service.reverse_settlement(session, sale_id=sale_id, amount=payload.amount, note=payload.note)
         return sale_service.get_sale(session, sale_id)
@@ -131,15 +134,48 @@ def get_sale_operations(sale_id: int, session: Session = Depends(get_session)):
 @router.get("/{sale_id}/export_excel")
 def export_sale_excel(sale_id: int, session: Session = Depends(get_session)):
     try:
-        content, media_type, ext = sale_export_service.export_sale_excel(session, sale_id=sale_id, template_path=SALE_EXCEL_TEMPLATE_PATH)
+        content, media_type, ext = sale_export_service.export_sale_excel(session, sale_id=sale_id,
+                                                                         template_path=SALE_EXCEL_TEMPLATE_PATH)
+        sale = sale_service.get_sale(session, sale_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message)
 
-    file_name = f"sales_list_{sale_id}.{ext}"
+    file_name = f"销售清单_{sale.sale_no}.{ext}"
+    encoded_file_name = urllib.parse.quote(file_name)
+
     return StreamingResponse(
         BytesIO(content),
         media_type=media_type,
-        headers={"Content-Disposition": f"attachment; filename={file_name}"},
+        headers={"Content-Disposition": f"attachment; filename*=utf-8''{encoded_file_name}"},
+    )
+
+
+# --- 新增的 PDF 导出通道 (含错误捕捉增强) ---
+@router.get("/{sale_id}/export_pdf")
+def export_sale_pdf(sale_id: int, session: Session = Depends(get_session)):
+    try:
+        print(f"====== 开始生成订单 {sale_id} 的 PDF ======")
+        content = sale_export_service.export_sale_pdf(session, sale_id=sale_id, template_path=SALE_EXCEL_TEMPLATE_PATH)
+        sale = sale_service.get_sale(session, sale_id)
+        print(f"====== 订单 {sale_id} 的 PDF 生成成功 ======")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message)
+    except BadRequestError as exc:
+        print(f"====== PDF 导出被主动拦截，原因：{exc.message} ======")
+        raise HTTPException(status_code=400, detail=exc.message)
+    except Exception as exc:
+        # 当 Excel COM 转换报错或者超时时，这里会将具体原因抛出到控制台
+        print("====== PDF 转换出现未知异常 ======")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"底层转换失败: {str(exc)}")
+
+    file_name = f"销售清单_{sale.sale_no}.pdf"
+    encoded_file_name = urllib.parse.quote(file_name)
+
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename*=utf-8''{encoded_file_name}"},
     )
 
 

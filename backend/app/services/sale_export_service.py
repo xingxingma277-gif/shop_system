@@ -1,119 +1,179 @@
 from __future__ import annotations
 
-from io import BytesIO
+import os
+import tempfile
 from pathlib import Path
-import html
-
+from io import BytesIO
 from sqlmodel import Session
-
-from app.core.errors import NotFoundError
-from app.models import Sale
+from app.core.errors import NotFoundError, BadRequestError
+from app.models import Sale, Customer
 from app.services import sale_service
 
 
-def _export_spreadsheet_xml(sale) -> bytes:
-    rows = []
-    rows.append('<Row><Cell><Data ss:Type="String">销售清单</Data></Cell></Row>')
-    rows.append(f'<Row><Cell><Data ss:Type="String">单号</Data></Cell><Cell><Data ss:Type="String">{html.escape(sale.sale_no)}</Data></Cell></Row>')
-    rows.append(f'<Row><Cell><Data ss:Type="String">日期</Data></Cell><Cell><Data ss:Type="String">{html.escape(sale.sale_date.isoformat().replace("+00:00", "Z"))}</Data></Cell></Row>')
-    rows.append(f'<Row><Cell><Data ss:Type="String">客户</Data></Cell><Cell><Data ss:Type="String">{html.escape(sale.customer_name)}</Data></Cell></Row>')
-    rows.append('<Row/>')
-    rows.append('<Row><Cell><Data ss:Type="String">序号</Data></Cell><Cell><Data ss:Type="String">商品</Data></Cell><Cell><Data ss:Type="String">SKU</Data></Cell><Cell><Data ss:Type="String">单位</Data></Cell><Cell><Data ss:Type="String">数量</Data></Cell><Cell><Data ss:Type="String">单价</Data></Cell><Cell><Data ss:Type="String">金额</Data></Cell></Row>')
-    for idx, it in enumerate(sale.items, start=1):
-        rows.append(
-            f'<Row><Cell><Data ss:Type="Number">{idx}</Data></Cell>'
-            f'<Cell><Data ss:Type="String">{html.escape(it.product_name)}</Data></Cell>'
-            f'<Cell><Data ss:Type="String">{html.escape(it.sku or "")}</Data></Cell>'
-            f'<Cell><Data ss:Type="String">{html.escape(it.unit or "")}</Data></Cell>'
-            f'<Cell><Data ss:Type="Number">{float(it.qty)}</Data></Cell>'
-            f'<Cell><Data ss:Type="Number">{float(it.unit_price)}</Data></Cell>'
-            f'<Cell><Data ss:Type="Number">{float(it.line_total)}</Data></Cell></Row>'
-        )
-    rows.append(f'<Row><Cell><Data ss:Type="String">合计</Data></Cell><Cell/><Cell/><Cell/><Cell/><Cell/><Cell><Data ss:Type="Number">{float(sale.total_amount)}</Data></Cell></Row>')
-
-    content = f'''<?xml version="1.0"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:x="urn:schemas-microsoft-com:office:excel"
- xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
- <Worksheet ss:Name="销售清单">
-  <Table>
-   {''.join(rows)}
-  </Table>
- </Worksheet>
-</Workbook>'''
-    return content.encode('utf-8')
-
-
-def _try_openpyxl_export(sale, template_path: str | None) -> bytes | None:
-    try:
-        from openpyxl import Workbook, load_workbook
-    except Exception:
-        return None
-
-    if template_path and Path(template_path).exists():
-        wb = load_workbook(template_path)
+def _set_cell_value(ws, r, c, val):
+    """安全地向单元格写入数据，完美兼容并保护合并单元格(MergedCell)"""
+    cell = ws.cell(row=r, column=c)
+    if type(cell).__name__ == 'MergedCell':
+        for merged_range in ws.merged_cells.ranges:
+            if cell.coordinate in merged_range:
+                ws.cell(row=merged_range.min_row, column=merged_range.min_col, value=val)
+                return
     else:
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "销售清单"
-        ws["A1"] = "销售清单"
-
-    ws = wb.active
-    # replace title and placeholders
-    for row in ws.iter_rows():
-        for cell in row:
-            if isinstance(cell.value, str) and "报价单" in cell.value:
-                cell.value = cell.value.replace("报价单", "销售清单")
-            if isinstance(cell.value, str):
-                cell.value = (
-                    cell.value
-                    .replace("{{title}}", "销售清单")
-                    .replace("{{sale_no}}", sale.sale_no)
-                    .replace("{{sale_date}}", sale.sale_date.isoformat().replace("+00:00", "Z"))
-                    .replace("{{customer_name}}", sale.customer_name)
-                    .replace("{{total_amount}}", f"{sale.total_amount:.2f}")
-                )
-
-    # label fill
-    for r in range(1, min(ws.max_row + 1, 50)):
-        key = str(ws.cell(r, 1).value or "").strip()
-        if key in {"单号", "订单编号"}:
-            ws.cell(r, 2, sale.sale_no)
-        elif key in {"日期", "开单日期"}:
-            ws.cell(r, 2, sale.sale_date.isoformat().replace("+00:00", "Z"))
-        elif key in {"客户", "客户名称"}:
-            ws.cell(r, 2, sale.customer_name)
-        elif key in {"合计", "总计"}:
-            ws.cell(r, 2, float(sale.total_amount))
-
-    start = max(12, ws.max_row + 2)
-    for idx, it in enumerate(sale.items, start=1):
-        row = start + idx - 1
-        ws.cell(row, 1, idx)
-        ws.cell(row, 2, it.product_name)
-        ws.cell(row, 3, it.sku or "")
-        ws.cell(row, 4, it.unit or "")
-        ws.cell(row, 5, float(it.qty))
-        ws.cell(row, 6, float(it.unit_price))
-        ws.cell(row, 7, float(it.line_total))
-
-    bio = BytesIO()
-    wb.save(bio)
-    return bio.getvalue()
+        cell.value = val
 
 
-def export_sale_excel(session: Session, *, sale_id: int, template_path: str | None = None):
+def export_sale_excel(session: Session, *, sale_id: int, template_path: str | None = None) -> tuple[bytes, str, str]:
     exists = session.get(Sale, sale_id)
     if not exists:
         raise NotFoundError("单据不存在")
     sale = sale_service.get_sale(session, sale_id)
 
-    content = _try_openpyxl_export(sale, template_path)
-    if content is not None:
-        return content, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'
+    try:
+        from openpyxl import Workbook, load_workbook
+    except ImportError:
+        raise BadRequestError("请安装 openpyxl 库")
 
-    # fallback to Excel-readable XML when openpyxl is unavailable in runtime
-    content = _export_spreadsheet_xml(sale)
-    return content, 'application/vnd.ms-excel', 'xml'
+    current_dir = Path(__file__).resolve().parent
+    backend_dir = current_dir.parent.parent
+    root_dir = backend_dir.parent
+
+    possible_paths = [
+        Path(template_path) if template_path else None,
+        backend_dir / "打印模板.xlsx",
+        root_dir / "打印模板.xlsx",
+        Path("打印模板.xlsx")
+    ]
+
+    path_to_use = None
+    for p in possible_paths:
+        if p and p.exists():
+            path_to_use = p
+            break
+
+    if not path_to_use:
+        raise BadRequestError("找不到【打印模板.xlsx】，请确认该文件已上传")
+
+    wb = load_workbook(path_to_use)
+    ws = wb.active
+
+    customer = session.get(Customer, sale.customer_id) if getattr(sale, 'customer_id', None) else None
+    customer_phone = getattr(sale, "contact_phone_snapshot", None)
+    if not customer_phone and customer:
+        customer_phone = getattr(customer, "phone", None) or getattr(customer, "mobile", None) or getattr(customer,
+                                                                                                          "contact_phone",
+                                                                                                          None)
+    customer_phone = customer_phone or "-"
+
+    sale_date_str = sale.sale_date.strftime("%Y-%m-%d %H:%M")
+
+    for r in range(1, 15):
+        for c in range(1, 15):
+            cell = ws.cell(row=r, column=c)
+            if type(cell).__name__ == 'MergedCell':
+                continue
+
+            val = str(cell.value or "").strip()
+            # 兼容D列与H列偏移填入
+            if val in ["单号：", "单号"]:
+                _set_cell_value(ws, r, c + 2, sale.sale_no)
+            elif val in ["日期：", "日期"]:
+                _set_cell_value(ws, r, c + 2, sale_date_str)
+            elif val in ["客户名称：", "客户名称", "客户"]:
+                _set_cell_value(ws, r, c + 2, sale.customer_name)
+            elif val in ["电话：", "电话", "联系电话：", "联系电话"]:
+                _set_cell_value(ws, r, c + 2, customer_phone)
+
+    start_row = 12
+    col_map = {}
+    for r in range(1, 20):
+        for c in range(1, 15):
+            cell = ws.cell(row=r, column=c)
+            if type(cell).__name__ == 'MergedCell':
+                continue
+            val = str(cell.value or "").strip()
+            if val == "序号":
+                col_map['index'] = c
+                start_row = r + 1
+            elif val in ["名称", "品名", "商品名称"]:
+                col_map['name'] = c
+            elif val in ["规格", "SKU"]:
+                col_map['sku'] = c
+            elif val == "数量":
+                col_map['qty'] = c
+            elif val == "单位":
+                col_map['unit'] = c
+            elif val == "单价":
+                col_map['price'] = c
+
+        if 'index' in col_map and 'name' in col_map:
+            break
+
+    for idx, it in enumerate(sale.items):
+        r = start_row + idx
+        if 'index' in col_map: _set_cell_value(ws, r, col_map['index'], idx + 1)
+        if 'name' in col_map: _set_cell_value(ws, r, col_map['name'], it.product_name)
+        if 'sku' in col_map: _set_cell_value(ws, r, col_map['sku'], it.sku or "")
+        if 'qty' in col_map: _set_cell_value(ws, r, col_map['qty'], float(it.qty))
+        if 'unit' in col_map: _set_cell_value(ws, r, col_map['unit'], it.unit or "")
+        if 'price' in col_map: _set_cell_value(ws, r, col_map['price'], float(it.unit_price))
+
+    bio = BytesIO()
+    wb.save(bio)
+    return bio.getvalue(), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'xlsx'
+
+
+def export_sale_pdf(session: Session, *, sale_id: int, template_path: str | None = None) -> bytes:
+    """导出 PDF 功能：利用系统的 Excel 软件将填好的数据直接转换为完美的 PDF"""
+    excel_bytes, _, _ = export_sale_excel(session, sale_id=sale_id, template_path=template_path)
+
+    try:
+        import win32com.client
+        import pythoncom
+    except ImportError:
+        raise BadRequestError("请在 backend 目录下运行 pip install pywin32 以支持 PDF 转换")
+
+    # 将数据写入系统临时文件
+    fd_xlsx, temp_xlsx = tempfile.mkstemp(suffix=".xlsx")
+    with os.fdopen(fd_xlsx, 'wb') as f:
+        f.write(excel_bytes)
+
+    temp_pdf = temp_xlsx.replace(".xlsx", ".pdf")
+
+    try:
+        pythoncom.CoInitialize()
+        # 必须使用 DispatchEx，它会强制启动一个全新的 Excel 进程，防止和您当前正在打开的 Excel 互相卡死干扰
+        excel = win32com.client.DispatchEx("Excel.Application")
+        excel.Visible = False
+        excel.DisplayAlerts = False
+
+        abs_xlsx = os.path.abspath(temp_xlsx)
+        abs_pdf = os.path.abspath(temp_pdf)
+
+        wb = excel.Workbooks.Open(abs_xlsx)
+        wb.ExportAsFixedFormat(0, abs_pdf)  # 0 代表输出为 PDF
+        wb.Close(False)
+        excel.Quit()
+    except Exception as e:
+        raise BadRequestError(f"PDF转换失败，请确认后台 Excel 进程未卡死: {str(e)}")
+    finally:
+        pythoncom.CoUninitialize()
+
+    # 读取转换好的 PDF 数据，并且立刻【清理销毁临时垃圾文件】，保护服务器硬盘
+    try:
+        with open(temp_pdf, "rb") as f:
+            pdf_bytes = f.read()
+    except FileNotFoundError:
+        raise BadRequestError("未能成功生成 PDF 文件")
+    finally:
+        if os.path.exists(temp_xlsx):
+            try:
+                os.remove(temp_xlsx)
+            except:
+                pass
+        if os.path.exists(temp_pdf):
+            try:
+                os.remove(temp_pdf)
+            except:
+                pass
+
+    return pdf_bytes

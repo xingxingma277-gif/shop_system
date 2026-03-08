@@ -4,7 +4,8 @@
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
         <div style="font-weight:700">订单详情</div>
         <div style="display:flex;gap:8px;">
-          <el-button @click="onPrint">打印预览</el-button>
+          <!-- 打印预览按钮 -->
+          <el-button type="success" @click="onPrint">打印预览</el-button>
           <el-button type="primary" plain @click="onContinue">继续开单</el-button>
           <el-button type="primary" @click="onProfile">查看客户档案</el-button>
         </div>
@@ -15,14 +16,14 @@
       <el-descriptions-item label="单号">{{ sale.sale_no }}</el-descriptions-item>
       <el-descriptions-item label="日期时间">{{ fmt(sale.sale_date) }}</el-descriptions-item>
       <el-descriptions-item label="客户">{{ sale.customer_name }}</el-descriptions-item>
-      <el-descriptions-item label="拿货人" v-if="sale.buyer_name">{{ sale.buyer_name }}</el-descriptions-item>
+      <el-descriptions-item label="电话">{{ customerPhone }}</el-descriptions-item>
       <el-descriptions-item label="备注" :span="2">{{ sale.note || '-' }}</el-descriptions-item>
     </el-descriptions>
 
     <el-divider />
     <el-table :data="sale.items || []" border>
       <el-table-column prop="product_name" label="商品" min-width="180" />
-      <el-table-column prop="sku" label="SKU" min-width="120" />
+      <el-table-column prop="sku" label="规格" min-width="120" />
       <el-table-column prop="qty" label="数量" width="110" />
       <el-table-column prop="unit_price" label="单价" width="110" />
       <el-table-column prop="line_total" label="小计" width="120" />
@@ -36,54 +37,20 @@
       <el-tag :type="statusTag(sale.settlement_status || sale.payment_status)">{{ statusText(sale.settlement_status || sale.payment_status) }}</el-tag>
     </div>
 
-    <!-- 修复：优雅的打印预览与下载窗口 -->
-    <el-dialog v-model="printDialog" title="打印/下载预览" width="800px">
-      <div id="print-area" style="padding: 20px; font-family: sans-serif; color: #000;">
-        <h2 style="text-align: center; margin-bottom: 20px;">销售清单</h2>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 14px;">
-          <span>单号：{{ sale.sale_no }}</span>
-          <span>日期：{{ fmt(sale.sale_date) }}</span>
-        </div>
-        <div style="margin-bottom: 10px; font-size: 14px;">客户名称：{{ sale.customer_name }}</div>
-
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;" border="1">
-          <thead>
-            <tr style="background-color: #f2f2f2;">
-              <th style="padding: 8px;">序号</th>
-              <th style="padding: 8px;">商品</th>
-              <th style="padding: 8px;">SKU</th>
-              <th style="padding: 8px;">单位</th>
-              <th style="padding: 8px;">数量</th>
-              <th style="padding: 8px;">单价</th>
-              <th style="padding: 8px;">金额</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(it, idx) in sale.items" :key="idx" style="text-align: center;">
-              <td style="padding: 8px;">{{ idx + 1 }}</td>
-              <td style="padding: 8px;">{{ it.product_name }}</td>
-              <td style="padding: 8px;">{{ it.sku || '-' }}</td>
-              <td style="padding: 8px;">{{ it.unit || '-' }}</td>
-              <td style="padding: 8px;">{{ it.qty }}</td>
-              <td style="padding: 8px;">{{ it.unit_price }}</td>
-              <td style="padding: 8px;">{{ it.line_total }}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div style="text-align: right; margin-top: 10px; font-weight: bold; font-size: 16px;">
-          合计：¥{{ money(sale.total_amount) }}
-        </div>
-        <div style="display: flex; justify-content: space-between; margin-top: 40px; font-size: 14px;">
-          <span>发货人（签字）：_______________</span>
-          <span>收货人（签字）：_______________</span>
+    <!-- 打印预览弹窗：完全抛弃网页排版，直接内嵌原生 PDF 文件，100%还原Excel -->
+    <el-dialog v-model="printDialog" title="打印单据预览 (原生格式)" width="850px" top="5vh">
+      <div v-loading="pdfLoading" style="height: 65vh; min-height: 500px; width: 100%; border: 1px solid #dcdfe6; background: #f5f7fa;">
+        <!-- 如果加载成功，直接展示 PDF -->
+        <iframe v-if="pdfUrl" :src="pdfUrl" width="100%" height="100%" style="border: none;"></iframe>
+        <div v-else-if="!pdfLoading" style="text-align: center; padding-top: 100px; color: #999;">
+          未能加载 PDF 预览
         </div>
       </div>
 
       <template #footer>
         <el-button @click="printDialog = false">关闭</el-button>
-        <el-button type="success" plain @click="downloadExcel">直接下载 Excel</el-button>
-        <el-button type="primary" @click="doPrint">网页端打印</el-button>
+        <el-button type="success" plain @click="downloadExcel">下载 Excel 存档</el-button>
+        <el-button type="primary" :disabled="!pdfUrl" @click="doPrint">直接打印此单据</el-button>
       </template>
     </el-dialog>
 
@@ -93,6 +60,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { getSaleApi } from '../api/sales'
 import { formatDateTime, money } from '../utils/format'
 import http from '../api/http'
@@ -101,35 +69,73 @@ const route = useRoute()
 const router = useRouter()
 const sale = ref(null)
 const printDialog = ref(false)
+const customerPhone = ref('-')
+const pdfUrl = ref(null)
+const pdfLoading = ref(false)
 
-const fmt = (v) => formatDateTime(v)
+const fmt = (v) => formatDateTime(v, 'YYYY-MM-DD HH:mm')
 const statusText = (v) => ({ unpaid: '未结清', partial: '部分结清', paid: '已结清', UNPAID: '未结清', PARTIAL: '部分结清', PAID: '已结清' }[v] || '-')
 const statusTag = (v) => ({ unpaid: 'danger', partial: 'warning', paid: 'success', UNPAID: 'danger', PARTIAL: 'warning', PAID: 'success' }[v] || 'info')
 const paymentMethodText = (v) => ({ cash: '现金', wechat: '微信', alipay: '支付宝', bank_transfer: '银行转账' }[v] || '-')
 
-function onPrint() {
+// 点击预览时，请求后端的 PDF 文件并展示
+async function onPrint() {
   printDialog.value = true
+  if (!pdfUrl.value) {
+    pdfLoading.value = true
+    try {
+      const res = await http.get(`/api/sales/${sale.value.id}/export_pdf`, {
+        responseType: 'blob'
+      })
+      // 将返回的二进制流转为 PDF 可见链接
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      pdfUrl.value = window.URL.createObjectURL(blob)
+    } catch (err) {
+      ElMessage.error('加载打印预览失败，请检查 Excel 是否卡死或环境配置。')
+    } finally {
+      pdfLoading.value = false
+    }
+  }
 }
 
-// 直接使用浏览器默认机制下载，避免 Blob 数据强行转后缀名导致打不开
-function downloadExcel() {
-  const baseUrl = http.defaults.baseURL || 'http://127.0.0.1:8000'
-  window.open(`${baseUrl}/api/sales/${sale.value.id}/export_excel`, '_blank')
+// 正常下载 Excel 表格
+async function downloadExcel() {
+  try {
+    const res = await http.get(`/api/sales/${sale.value.id}/export_excel`, {
+      responseType: 'blob'
+    })
+
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `销售清单_${sale.value.sale_no}.xlsx`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+
+  } catch (err) {
+    ElMessage.error('下载失败，请确保 backend 目录下有打印模板.xlsx。')
+  }
 }
 
-// 提取内容在浏览器新标签页中打开进行物理打印
+// 直接打印生成的 PDF 文件，这样打出来的单据和您的 Excel 模板百分百一致
 function doPrint() {
-  const content = document.getElementById('print-area').innerHTML
-  const win = window.open('', '_blank')
-  win.document.write('<html><head><title>打印销售清单</title></head><body>')
-  win.document.write(content)
-  win.document.write('</body></html>')
-  win.document.close()
-  win.focus()
-  setTimeout(() => {
-    win.print()
-    win.close()
-  }, 200)
+  if (!pdfUrl.value) return
+
+  const iframe = document.createElement('iframe')
+  iframe.style.display = 'none'
+  iframe.src = pdfUrl.value
+  document.body.appendChild(iframe)
+
+  iframe.onload = () => {
+    setTimeout(() => {
+      iframe.contentWindow.focus()
+      iframe.contentWindow.print()
+      // 打印完毕后可选择性移除 iframe，保持页面整洁
+      setTimeout(() => document.body.removeChild(iframe), 5000)
+    }, 200)
+  }
 }
 
 function onContinue() {
@@ -138,9 +144,20 @@ function onContinue() {
   }
   router.push('/new-sale')
 }
+
 function onProfile() { if (sale.value?.customer_id) router.push(`/customers/${sale.value.customer_id}`) }
 
 onMounted(async () => {
   sale.value = await getSaleApi(Number(route.params.id))
+
+  if (sale.value && sale.value.customer_id) {
+    try {
+      const res = await http.get(`/api/customers/${sale.value.customer_id}`)
+      customerPhone.value = res.data.phone || res.data.mobile || res.data.contact_phone || '-'
+    } catch (e) {
+      console.warn('获取客户真实电话失败', e)
+      customerPhone.value = '-'
+    }
+  }
 })
 </script>
