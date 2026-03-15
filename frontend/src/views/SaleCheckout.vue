@@ -1,24 +1,18 @@
 <template>
   <el-card>
-    <template #header><b>收款确认</b></template>
+    <template #header><b>收款确认 (后置还款补收)</b></template>
     <div v-if="sale">
-      <p>单号 #{{ sale.id }} ｜应收：¥{{ sale.total_amount.toFixed(2) }} ｜未收：¥{{ sale.ar_amount.toFixed(2) }}</p>
+      <p>单号 #{{ sale.sale_no }} ｜应收：¥{{ sale.total_amount.toFixed(2) }} ｜未收：¥{{ sale.ar_amount.toFixed(2) }}</p>
       <el-form label-width="100px">
         <el-form-item label="付款类型">
           <el-select v-model="form.pay_type" style="width:260px">
-            <el-option label="付清" value="paid_full" />
-            <el-option label="赊账" value="credit" />
+            <el-option label="付清 (全额补收)" value="paid_full" />
             <el-option label="部分付款" value="partial" />
           </el-select>
         </el-form-item>
         <el-form-item label="收款方式">
           <el-select v-model="form.method" style="width:260px">
-            <el-option label="现金" value="cash" />
-            <el-option label="微信" value="wechat" />
-            <el-option label="支付宝" value="alipay" />
-            <el-option label="银行卡" value="bank" />
-            <el-option label="转账" value="transfer" />
-            <el-option label="其他" value="other" />
+            <el-option v-for="m in paymentMethods" :key="m.value" :label="m.label" :value="m.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="收款金额" v-if="form.pay_type==='partial'">
@@ -26,24 +20,28 @@
         </el-form-item>
         <el-form-item label="备注"><el-input v-model="form.note" /></el-form-item>
       </el-form>
-      <el-button type="primary" :loading="saving" @click="submit">确认提交</el-button>
+      <el-button type="primary" :loading="saving" @click="submit">确认提交补收</el-button>
       <el-button @click="goProfile">回客户档案</el-button>
     </div>
   </el-card>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getSaleApi, submitSalePayment } from '../api/sales'
+import { useDictsStore } from '../stores/dicts'
 
 const route = useRoute()
 const router = useRouter()
+const dicts = useDictsStore()
+const paymentMethods = computed(() => dicts.paymentMethods)
+
 const saleId = Number(route.params.id || route.query.sale_id)
 const sale = ref(null)
 const saving = ref(false)
-const form = reactive({ pay_type: 'credit', method: 'transfer', amount: 0, note: '' })
+const form = reactive({ pay_type: 'paid_full', method: 'bank_transfer', amount: 0, note: '' })
 
 async function loadSale() {
   sale.value = await getSaleApi(saleId)
@@ -53,11 +51,11 @@ async function loadSale() {
 async function submit() {
   saving.value = true
   try {
-    const payload = { ...form }
+    const payload = { ...form, scene: "POST_SALE_REPAYMENT" }
     if (payload.pay_type !== 'partial') delete payload.amount
     const res = await submitSalePayment(saleId, payload)
     sale.value = res.sale
-    ElMessage.success('收款提交成功')
+    ElMessage.success('后置补款提交成功')
   } finally {
     saving.value = false
   }

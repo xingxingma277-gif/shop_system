@@ -32,6 +32,13 @@ class Sale(SQLModel, table=True):
     project_name: Optional[str] = Field(default=None, max_length=200)
     signed_by: Optional[str] = Field(default=None, max_length=100)
 
+    # 业务阶段扩展
+    order_stage: str = Field(default="SALE_CONFIRMED", max_length=30, index=True)
+    inventory_effected: bool = Field(default=True)
+    delivery_status: str = Field(default="NONE", max_length=30)
+    quote_confirmed_at: Optional[datetime] = None
+    delivery_created_at: Optional[datetime] = None
+
     sale_date: datetime = Field(default_factory=utc_now, nullable=False, index=True)
     note: Optional[str] = Field(default=None, max_length=500)
 

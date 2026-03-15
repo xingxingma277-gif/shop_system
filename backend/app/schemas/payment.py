@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 class PaymentCreate(BaseModel):
     sale_id: int
     amount: float = Field(gt=0)
-    method: str = Field(default="transfer")
+    method: str = Field(default="bank_transfer")
     paid_at: Optional[str] = None
     note: Optional[str] = Field(default=None, max_length=255)
 
@@ -16,6 +16,7 @@ class PaymentRead(BaseModel):
     sale_id: Optional[int] = None
     receipt_no: Optional[str] = None
     pay_type: str
+    scene: str
     amount: float
     method: str
     paid_at: str
@@ -34,7 +35,7 @@ class BatchPaymentApplyIn(BaseModel):
     customer_id: int
     sale_ids: List[int] = Field(min_length=1)
     total_amount: float = Field(gt=0)
-    method: str = Field(default="transfer")
+    method: str = Field(default="bank_transfer")
     paid_at: Optional[str] = None
     note: Optional[str] = Field(default=None, max_length=255)
 
@@ -53,7 +54,7 @@ class BatchPaymentApplyOut(BaseModel):
 
 
 class CustomerReceiptCreate(BaseModel):
-    method: str = Field(default="transfer")
+    method: str = Field(default="bank_transfer")
     amount: float = Field(gt=0)
     note: Optional[str] = None
     allocate_mode: str = Field(default="oldest_first")
@@ -62,7 +63,7 @@ class CustomerReceiptCreate(BaseModel):
 class CustomerPaymentAllocateCreate(BaseModel):
     sale_ids: List[int] = Field(min_length=1)
     amount: float = Field(gt=0)
-    method: str = Field(default="transfer")
+    method: str = Field(default="bank_transfer")
     paid_at: Optional[str] = None
     note: Optional[str] = None
 

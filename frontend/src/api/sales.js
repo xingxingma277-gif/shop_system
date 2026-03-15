@@ -8,6 +8,14 @@ export function createSale(data) {
   return http.post('/api/sales', data).then((r) => r.data)
 }
 
+export function convertToSale(id) {
+  return http.post(`/api/sales/${id}/convert_to_sale`).then((r) => r.data)
+}
+
+export function generateDelivery(id) {
+  return http.post(`/api/sales/${id}/generate_delivery`).then((r) => r.data)
+}
+
 export function listSalesApi(params) {
   return http.get('/api/sales', { params }).then((r) => r.data)
 }
@@ -28,7 +36,6 @@ export function getSalePaymentRecords(saleId) {
   return http.get(`/api/sales/${saleId}/payment_records`).then((r) => r.data)
 }
 
-
-export function exportSaleExcel(saleId) {
-  return http.get(`/api/sales/${saleId}/export_excel`, { responseType: "blob" }).then((r) => r.data)
+export function exportSaleExcel(saleId, docType = 'sale') {
+  return http.get(`/api/sales/${saleId}/export_excel`, { params: { doc_type: docType }, responseType: "blob" }).then((r) => r.data)
 }

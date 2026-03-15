@@ -42,7 +42,7 @@
         <div style="margin-left:auto;display:flex;align-items:center;gap:12px;">
           <span style="color:#666">已选 {{ selectedRows.length }} 笔，合计未收 ¥{{ selectedTotal.toFixed(2) }}</span>
           <el-tooltip content="请先勾选要还款的订单" :disabled="selectedRows.length>0">
-            <el-button type="primary" :disabled="selectedRows.length===0" @click="openRepayDialog">还款</el-button>
+            <el-button type="primary" :disabled="selectedRows.length===0" @click="openRepayDialog">补款/还款</el-button>
           </el-tooltip>
         </div>
       </div>
@@ -85,10 +85,10 @@
           </el-table>
         </el-tab-pane>
 
-        <el-tab-pane label="还款记录" name="payments">
+        <el-tab-pane label="后续还款记录" name="payments">
           <el-table :data="payments.items" border :height="tableHeight" empty-text="当前筛选无数据">
             <el-table-column prop="paid_at" label="还款时间" min-width="160"><template #default="{ row }">{{ fmt(row.paid_at) }}</template></el-table-column>
-            <el-table-column prop="method" label="方式" width="100" />
+            <el-table-column prop="method" label="方式" width="100"><template #default="{row}">{{ paymentMethodText(row.method) }}</template></el-table-column>
             <el-table-column prop="amount" label="还款金额" width="110" />
             <el-table-column label="关联订单" min-width="220">
               <template #default="{ row }">
@@ -101,7 +101,7 @@
       </el-tabs>
     </el-card>
 
-    <el-dialog v-model="repayDialog" title="还款确认" width="760px">
+    <el-dialog v-model="repayDialog" title="补款/还款确认" width="760px">
       <el-table :data="selectedRows" border size="small" style="margin-bottom:12px">
         <el-table-column prop="sale_no" label="单号" min-width="150" />
         <el-table-column prop="date" label="日期" min-width="160"><template #default="{row}">{{ fmt(row.date) }}</template></el-table-column>
@@ -112,10 +112,7 @@
       <el-form label-width="90px">
         <el-form-item label="还款方式">
           <el-select v-model="repayForm.method" style="width:100%">
-            <el-option label="现金" value="cash" />
-            <el-option label="微信" value="wechat" />
-            <el-option label="支付宝" value="alipay" />
-            <el-option label="转账" value="transfer" />
+            <el-option v-for="m in paymentMethods" :key="m.value" :label="m.label" :value="m.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="还款金额"><el-input-number v-model="repayForm.amount" :min="0" style="width:100%" /></el-form-item>
@@ -127,12 +124,18 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="paymentsDialog" title="该单收款记录" width="640px">
+    <el-dialog v-model="paymentsDialog" title="该单流水" width="640px">
       <el-table :data="salePayments" border size="small">
         <el-table-column prop="paid_at" label="时间" min-width="160"><template #default="{ row }">{{ fmt(row.paid_at) }}</template></el-table-column>
         <el-table-column prop="amount" label="金额" width="100" />
-        <el-table-column prop="method" label="方式" width="100" />
-        <el-table-column prop="receipt_no" label="批次号" min-width="180" />
+        <el-table-column prop="scene" label="款项类型" width="140">
+           <template #default="{row}">
+              <el-tag v-if="row.scene === 'ORDER_CHECKOUT'" type="info" size="small">开单首付款</el-tag>
+              <el-tag v-else-if="row.scene === 'REVERSAL'" type="danger" size="small">冲销</el-tag>
+              <el-tag v-else type="success" size="small">后续还款</el-tag>
+           </template>
+        </el-table-column>
+        <el-table-column prop="method" label="方式" width="100"><template #default="{row}">{{ paymentMethodText(row.method) }}</template></el-table-column>
       </el-table>
     </el-dialog>
   </div>
@@ -147,9 +150,13 @@ import http from '../api/http'
 import { getCustomer, listBuyers } from '../api/customers'
 import { allocateCustomerPayment, exportCustomerStatementUrl, getCustomerArSummary, getCustomerStatement, listCustomerPayments } from '../api/customers_ext'
 import { getSalePaymentRecords } from '../api/sales'
+import { useDictsStore } from '../stores/dicts'
 
 const route = useRoute()
 const router = useRouter()
+const dicts = useDictsStore()
+const paymentMethods = computed(() => dicts.paymentMethods)
+
 const customerId = Number(route.params.id)
 const tableHeight = Math.max(window.innerHeight - 440, 260)
 const tab = ref('statement')
@@ -170,7 +177,7 @@ const statementLabel = computed(() => (customer.value?.type === 'personal' ? '�
 
 const repayDialog = ref(false)
 const repaying = ref(false)
-const repayForm = reactive({ method: 'transfer', amount: 0, note: '' })
+const repayForm = reactive({ method: 'bank_transfer', amount: 0, note: '' })
 
 const paymentsDialog = ref(false)
 const salePayments = ref([])
@@ -178,6 +185,11 @@ const salePayments = ref([])
 const fmt = (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-')
 function thisMonth() { dateRange.value = [dayjs().startOf('month').toDate(), dayjs().endOf('month').toDate()] }
 function quickDays(days) { dateRange.value = [dayjs().subtract(days, 'day').toDate(), dayjs().endOf('day').toDate()] }
+
+function paymentMethodText(v) {
+  const f = dicts.paymentMethods.find(m => m.value === v)
+  return f ? f.label : (v || '-')
+}
 
 function buildParams() {
   return {
@@ -214,6 +226,7 @@ async function loadBuyerStatement() {
 }
 
 async function loadPayments() {
+  // 此处已在后端服务层拦截只返回 POST_SALE_REPAYMENT
   const data = await listCustomerPayments(customerId, buildParams())
   payments.items = data.items || []
 }
@@ -246,8 +259,6 @@ function openRepayDialog() {
   repayForm.note = ''
   repayDialog.value = true
 }
-function onOpenSelect(rows) { selectedSaleIds.value = rows.map((x) => x.id); selectedTotal.value = rows.reduce((s, x) => s + Number(x.balance || 0), 0) }
-function goPayStep() { receipt.amount = Number(selectedTotal.value.toFixed(2)); pickDialog.value = false; payDialog.value = true }
 
 async function submitRepay() {
   if (!repayForm.amount || repayForm.amount <= 0) return ElMessage.warning('请输入还款金额')
@@ -264,7 +275,6 @@ async function submitRepay() {
     repayDialog.value = false
     await loadBase()
     await reloadAll()
-    await loadPayments()
   } finally {
     repaying.value = false
   }

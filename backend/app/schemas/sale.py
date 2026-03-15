@@ -18,6 +18,7 @@ class SaleCreate(SQLModel):
     project: Optional[str] = None
     sale_date: Optional[datetime] = None
     note: Optional[str] = Field(default=None, max_length=500)
+    order_stage: Optional[str] = Field(default="SALE_CONFIRMED")
     items: List[SaleItemCreate]
 
 
@@ -58,6 +59,11 @@ class SaleRead(SQLModel):
     buyer_id: Optional[int] = None
     buyer_name: Optional[str] = None
     project: Optional[str] = None
+
+    order_stage: str
+    inventory_effected: bool
+    delivery_status: str
+
     sale_date: datetime
     note: Optional[str] = None
     total_amount: float
@@ -80,6 +86,11 @@ class SaleSummary(SQLModel):
     customer_name: str
     buyer_name: Optional[str] = None
     project: Optional[str] = None
+
+    order_stage: str
+    inventory_effected: bool
+    delivery_status: str
+
     sale_date: datetime
     note: Optional[str] = None
     total_amount: float
@@ -102,6 +113,7 @@ class SalePaymentCreate(SQLModel):
     method: str
     amount: Optional[float] = None
     note: Optional[str] = None
+    scene: Optional[str] = "POST_SALE_REPAYMENT"
 
 
 class SalePaymentSubmitResponse(SQLModel):

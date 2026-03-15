@@ -8,11 +8,11 @@ from app.services.utils import to_update_dict
 
 
 def list_products(
-    session: Session,
-    page: int,
-    page_size: int,
-    q: str | None = None,
-    active_only: bool = True,
+        session: Session,
+        page: int,
+        page_size: int,
+        q: str | None = None,
+        active_only: bool = True,
 ):
     stmt = select(Product)
     if active_only:
@@ -34,6 +34,11 @@ def list_products(
 def create_product(session: Session, data) -> Product:
     if data.standard_price is not None and data.standard_price < 0:
         raise BadRequestError("标准价不能为负数")
+
+    # 添加防重校验
+    existing = session.exec(select(Product).where(Product.name == data.name.strip())).first()
+    if existing:
+        raise BadRequestError(f"已存在同名商品：{data.name.strip()}")
 
     product = Product(
         name=data.name.strip(),
@@ -64,6 +69,10 @@ def update_product(session: Session, product_id: int, data) -> Product:
     updates = to_update_dict(data)
     if "name" in updates and updates["name"] is not None:
         updates["name"] = updates["name"].strip()
+        existing = session.exec(select(Product).where(Product.name == updates["name"])).first()
+        if existing and existing.id != product_id:
+            raise BadRequestError(f"已存在同名商品：{updates['name']}")
+
     if "sku" in updates and updates["sku"] is not None:
         updates["sku"] = updates["sku"].strip()
     if "unit" in updates and updates["unit"] is not None:
@@ -125,7 +134,8 @@ def adjust_stock(session: Session, *, product_id: int, change_qty: float, note: 
     if abs(float(change_qty)) <= 1e-9:
         raise BadRequestError("调整数量不能为0")
     p.stock_quantity = round(float(p.stock_quantity or 0) + float(change_qty), 2)
-    session.add(InventoryTxn(product_id=p.id, change_qty=float(change_qty), after_qty=float(p.stock_quantity), biz_type="manual_adjust", note=note))
+    session.add(InventoryTxn(product_id=p.id, change_qty=float(change_qty), after_qty=float(p.stock_quantity),
+                             biz_type="manual_adjust", note=note))
     session.add(p)
     session.commit()
     session.refresh(p)

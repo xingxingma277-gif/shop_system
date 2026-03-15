@@ -1,6 +1,8 @@
 <template>
   <el-card v-if="sale">
-    <template #header><div style="font-weight:700">订单结算</div></template>
+    <template #header><div style="font-weight:700">修正订单状态 (不产生资金流水)</div></template>
+
+    <el-alert title="注意：此页面主要用于修正订单结算状态或关联结算信息。如果你想录入真实补收还款，请在详情页点击“还款确认”！" type="warning" show-icon style="margin-bottom: 12px" />
 
     <el-descriptions :column="2" border>
       <el-descriptions-item label="单号">{{ sale.sale_no }}</el-descriptions-item>
@@ -18,14 +20,14 @@
     </div>
 
     <el-form label-width="110px">
-      <el-form-item label="本次收款金额" v-if="form.settlement_status!=='UNPAID'">
+      <el-form-item label="名义收款金额" v-if="form.settlement_status!=='UNPAID'">
         <el-input-number v-model="form.paid_amount" :min="0" :max="sale.total_amount" :disabled="form.settlement_status==='PAID'" style="width:260px" />
         <span style="margin-left:8px;color:#666">范围：0 ~ {{ money(sale.total_amount) }}</span>
       </el-form-item>
 
-      <el-form-item label="付款方式" v-if="form.settlement_status!=='UNPAID'">
+      <el-form-item label="修正付款方式" v-if="form.settlement_status!=='UNPAID'">
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <el-button v-for="m in methods" :key="m.value" :type="form.payment_method===m.value ? 'primary' : 'default'" @click="form.payment_method=m.value">{{ m.label }}{{ form.payment_method===m.value ? ' ✓' : '' }}</el-button>
+          <el-button v-for="m in paymentMethods" :key="m.value" :type="form.payment_method===m.value ? 'primary' : 'default'" @click="form.payment_method=m.value">{{ m.label }}{{ form.payment_method===m.value ? ' ✓' : '' }}</el-button>
         </div>
       </el-form-item>
 
@@ -34,30 +36,27 @@
 
     <div style="display:flex;justify-content:flex-end;gap:8px;">
       <el-button @click="goDetail">返回详情</el-button>
-      <el-button type="primary" :loading="saving" @click="submit">保存结算</el-button>
+      <el-button type="primary" :loading="saving" @click="submit">强制修正</el-button>
     </div>
   </el-card>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getSaleApi, submitSaleSettlement } from '../api/sales'
 import { formatDateTime, money } from '../utils/format'
+import { useDictsStore } from '../stores/dicts'
 
 const route = useRoute()
 const router = useRouter()
+const dicts = useDictsStore()
+const paymentMethods = computed(() => dicts.paymentMethods)
+
 const saleId = Number(route.params.id)
 const sale = ref(null)
 const saving = ref(false)
-
-const methods = [
-  { label: '现金', value: 'cash' },
-  { label: '微信', value: 'wechat' },
-  { label: '支付宝', value: 'alipay' },
-  { label: '银行转账', value: 'bank_transfer' },
-]
 
 const form = reactive({
   settlement_status: 'UNPAID',
@@ -66,7 +65,6 @@ const form = reactive({
   payment_note: '',
 })
 
-// 修复：提升操作体验，部分付款时默认给一个欠款金额
 function setStatus(status) {
   form.settlement_status = status
   if (status === 'UNPAID') {
@@ -106,13 +104,9 @@ async function submit() {
       payment_method: form.settlement_status === 'UNPAID' ? null : form.payment_method,
       payment_note: form.payment_note || null,
     })
-    const okMsg = form.settlement_status === 'PAID'
-      ? '订单已结清'
-      : (form.settlement_status === 'PARTIAL' ? '已记录部分收款' : '结算已保存')
-    ElMessage.success(okMsg)
+    ElMessage.success('修正成功')
     await router.push(`/sales/${saleId}`)
   } catch (err) {
-    // 修复：解析 Pydantic 的 422 验证报错
     let msg = err?.response?.data?.detail || err?.message || '结算保存失败'
     if (Array.isArray(msg)) {
       msg = msg[0]?.msg || '参数填写有误'

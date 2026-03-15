@@ -21,8 +21,10 @@ class Payment(SQLModel, table=True):
 
     receipt_no: Optional[str] = Field(default=None, max_length=40, index=True)
     pay_type: str = Field(default="partial", max_length=20, index=True)
+    # 新增：支付场景，分离首付款和后置还款
+    scene: str = Field(default="POST_SALE_REPAYMENT", max_length=30, index=True)
     amount: float = Field(nullable=False)
-    method: str = Field(default="transfer", max_length=20, index=True)
+    method: str = Field(default="bank_transfer", max_length=20, index=True)
 
     paid_at: datetime = Field(default_factory=utc_now, nullable=False, index=True)
     note: Optional[str] = Field(default=None, max_length=255)

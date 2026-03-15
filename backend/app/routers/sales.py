@@ -37,6 +37,22 @@ def create_sale(payload: SaleCreate, session: Session = Depends(get_session)):
         raise HTTPException(status_code=400, detail=exc.message)
 
 
+@router.post("/{sale_id}/convert_to_sale", response_model=SaleRead)
+def convert_to_sale(sale_id: int, session: Session = Depends(get_session)):
+    try:
+        return sale_service.convert_quote_to_sale(session, sale_id)
+    except (NotFoundError, BadRequestError) as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
+
+
+@router.post("/{sale_id}/generate_delivery", response_model=SaleRead)
+def generate_delivery(sale_id: int, session: Session = Depends(get_session)):
+    try:
+        return sale_service.generate_delivery(session, sale_id)
+    except (NotFoundError, BadRequestError) as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
+
+
 @router.get("", response_model=SalePage)
 def get_sales(
         customer_id: int | None = Query(None),
@@ -83,6 +99,7 @@ def submit_sale_payment(sale_id: int, payload: SalePaymentCreate, session: Sessi
             method=payload.method,
             amount=payload.amount,
             note=payload.note,
+            scene=payload.scene or "POST_SALE_REPAYMENT"
         )
         return {"sale": sale, "payment": payment}
     except NotFoundError as exc:
@@ -132,15 +149,16 @@ def get_sale_operations(sale_id: int, session: Session = Depends(get_session)):
 
 
 @router.get("/{sale_id}/export_excel")
-def export_sale_excel(sale_id: int, session: Session = Depends(get_session)):
+def export_sale_excel(sale_id: int, doc_type: str = "sale", session: Session = Depends(get_session)):
     try:
         content, media_type, ext = sale_export_service.export_sale_excel(session, sale_id=sale_id,
-                                                                         template_path=SALE_EXCEL_TEMPLATE_PATH)
+                                                                         template_path=SALE_EXCEL_TEMPLATE_PATH, doc_type=doc_type)
         sale = sale_service.get_sale(session, sale_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message)
 
-    file_name = f"销售清单_{sale.sale_no}.{ext}"
+    name_mapping = {"quote": "报价单", "sale": "销售清单", "delivery": "送货单"}
+    file_name = f"{name_mapping.get(doc_type, '销售清单')}_{sale.sale_no}.{ext}"
     encoded_file_name = urllib.parse.quote(file_name)
 
     return StreamingResponse(
@@ -150,12 +168,11 @@ def export_sale_excel(sale_id: int, session: Session = Depends(get_session)):
     )
 
 
-# --- 新增的 PDF 导出通道 (含错误捕捉增强) ---
 @router.get("/{sale_id}/export_pdf")
-def export_sale_pdf(sale_id: int, session: Session = Depends(get_session)):
+def export_sale_pdf(sale_id: int, doc_type: str = "sale", session: Session = Depends(get_session)):
     try:
-        print(f"====== 开始生成订单 {sale_id} 的 PDF ======")
-        content = sale_export_service.export_sale_pdf(session, sale_id=sale_id, template_path=SALE_EXCEL_TEMPLATE_PATH)
+        print(f"====== 开始生成订单 {sale_id} 的 PDF ({doc_type}) ======")
+        content = sale_export_service.export_sale_pdf(session, sale_id=sale_id, template_path=SALE_EXCEL_TEMPLATE_PATH, doc_type=doc_type)
         sale = sale_service.get_sale(session, sale_id)
         print(f"====== 订单 {sale_id} 的 PDF 生成成功 ======")
     except NotFoundError as exc:
@@ -164,12 +181,12 @@ def export_sale_pdf(sale_id: int, session: Session = Depends(get_session)):
         print(f"====== PDF 导出被主动拦截，原因：{exc.message} ======")
         raise HTTPException(status_code=400, detail=exc.message)
     except Exception as exc:
-        # 当 Excel COM 转换报错或者超时时，这里会将具体原因抛出到控制台
         print("====== PDF 转换出现未知异常 ======")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"底层转换失败: {str(exc)}")
 
-    file_name = f"销售清单_{sale.sale_no}.pdf"
+    name_mapping = {"quote": "报价单", "sale": "销售清单", "delivery": "送货单"}
+    file_name = f"{name_mapping.get(doc_type, '销售清单')}_{sale.sale_no}.pdf"
     encoded_file_name = urllib.parse.quote(file_name)
 
     return StreamingResponse(

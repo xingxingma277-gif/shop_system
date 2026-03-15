@@ -10,9 +10,8 @@ from app.models import Customer, CustomerContact, InventoryTxn, Product, Sale, S
 from app.schemas.sale import SaleItemRead, SaleRead, SaleSummary
 from app.services.pagination import paginate
 
-
 _ALLOWED_SETTLEMENT = {"UNPAID", "PARTIAL", "PAID"}
-_ALLOWED_METHODS = {"cash", "wechat", "alipay", "bank_transfer"}
+_ALLOWED_METHODS = {"cash", "wechat", "alipay", "bank_transfer", "other", "现金", "微信", "支付宝", "转账", "其他"}
 
 
 def _compute_payment_status(total_amount: float, paid_amount: float) -> str:
@@ -52,10 +51,12 @@ def _resolve_buyer_for_customer(session: Session, customer: Customer, buyer_id: 
             buyer = session.get(CustomerContact, buyer_id)
             if buyer and buyer.customer_id == customer.id:
                 return buyer
-        buyer = session.exec(select(CustomerContact).where(CustomerContact.customer_id == customer.id).order_by(CustomerContact.id.asc())).first()
+        buyer = session.exec(select(CustomerContact).where(CustomerContact.customer_id == customer.id).order_by(
+            CustomerContact.id.asc())).first()
         if buyer:
             return buyer
-        buyer = CustomerContact(customer_id=customer.id, name=customer.name, phone=customer.phone, role="本人", is_active=True)
+        buyer = CustomerContact(customer_id=customer.id, name=customer.name, phone=customer.phone, role="本人",
+                                is_active=True)
         session.add(buyer)
         session.flush()
         return buyer
@@ -80,7 +81,11 @@ def create_sale(session: Session, data) -> SaleRead:
     if not data.items:
         raise BadRequestError("至少需要 1 行商品明细")
 
-    product_ids = list({i.product_id for i in data.items})
+    # 同单防重校验
+    product_ids = [i.product_id for i in data.items]
+    if len(product_ids) != len(set(product_ids)):
+        raise BadRequestError("同一订单中不允许重复添加相同商品，请直接修改原商品行数量")
+
     products = session.exec(select(Product).where(Product.id.in_(product_ids))).all()
     prod_map = {p.id: p for p in products}
 
@@ -95,6 +100,12 @@ def create_sale(session: Session, data) -> SaleRead:
     sale_date = data.sale_date or utc_now()
     preferred_sale_no = (data.sale_no or "").strip()
 
+    order_stage = getattr(data, 'order_stage', 'SALE_CONFIRMED') or 'SALE_CONFIRMED'
+    if order_stage not in {"QUOTE", "SALE_CONFIRMED"}:
+        raise BadRequestError("订单阶段不合法")
+
+    inventory_effected = (order_stage == "SALE_CONFIRMED")
+
     for _ in range(3):
         sale_no = preferred_sale_no or _generate_sale_no(session, sale_date)
         sale = Sale(
@@ -105,6 +116,9 @@ def create_sale(session: Session, data) -> SaleRead:
             contact_name_snapshot=buyer.name,
             project=(data.project or None),
             project_name=(data.project or None),
+            order_stage=order_stage,
+            inventory_effected=inventory_effected,
+            delivery_status="NONE",
             sale_date=sale_date,
             note=data.note,
             total_amount=0,
@@ -137,19 +151,26 @@ def create_sale(session: Session, data) -> SaleRead:
 
             p = prod_map[it.product_id]
             before_qty = float(p.stock_quantity or 0)
-            p.stock_quantity = round(before_qty - qty, 2)
-            session.add(
-                InventoryTxn(
-                    product_id=p.id,
-                    change_qty=round(-qty, 2),
-                    after_qty=float(p.stock_quantity),
-                    biz_type="sale",
-                    biz_id=sale.id,
-                    sale_id=sale.id,
-                    note=f"销售单{sale.sale_no}扣减",
+
+            # 库存强校验
+            if inventory_effected and before_qty < qty:
+                raise BadRequestError(
+                    f"商品【{p.name}】当前库存 {before_qty}，不足 {qty}，不能开单。若需开单请选择生成报价单。")
+
+            if inventory_effected:
+                p.stock_quantity = round(before_qty - qty, 2)
+                session.add(
+                    InventoryTxn(
+                        product_id=p.id,
+                        change_qty=round(-qty, 2),
+                        after_qty=float(p.stock_quantity),
+                        biz_type="sale",
+                        biz_id=sale.id,
+                        sale_id=sale.id,
+                        note=f"销售单{sale.sale_no}扣减",
+                    )
                 )
-            )
-            session.add(p)
+                session.add(p)
 
             si = SaleItem(
                 sale_id=sale.id,
@@ -173,7 +194,69 @@ def create_sale(session: Session, data) -> SaleRead:
     raise BadRequestError("生成单号失败，请重试")
 
 
-def update_settlement(session: Session, *, sale_id: int, settlement_status: str, paid_amount: float, payment_method: str | None, payment_note: str | None):
+def convert_quote_to_sale(session: Session, sale_id: int):
+    sale = session.get(Sale, sale_id)
+    if not sale:
+        raise NotFoundError("单据不存在")
+    if sale.order_stage != "QUOTE":
+        raise BadRequestError("仅报价单可转为销售清单")
+    if sale.inventory_effected:
+        raise BadRequestError("该单已扣除库存，无法重复操作")
+    if sale.biz_status == "VOIDED":
+        raise BadRequestError("单据已作废，无法转换")
+
+    items = session.exec(select(SaleItem).where(SaleItem.sale_id == sale.id)).all()
+    for si in items:
+        p = session.get(Product, si.product_id)
+        if not p:
+            raise BadRequestError("部分商品已被删除，无法转换")
+        before_qty = float(p.stock_quantity or 0)
+        if before_qty < float(si.qty):
+            raise BadRequestError(f"商品【{p.name}】当前库存 {before_qty}，不足以完成此销售")
+
+        p.stock_quantity = round(before_qty - float(si.qty), 2)
+        session.add(
+            InventoryTxn(
+                product_id=p.id,
+                change_qty=round(-float(si.qty), 2),
+                after_qty=float(p.stock_quantity),
+                biz_type="sale",
+                biz_id=sale.id,
+                sale_id=sale.id,
+                note=f"报价单{sale.sale_no}转销售扣减",
+            )
+        )
+        session.add(p)
+
+    sale.order_stage = "SALE_CONFIRMED"
+    sale.inventory_effected = True
+    sale.quote_confirmed_at = utc_now()
+    session.add(sale)
+    session.commit()
+    return get_sale(session, sale.id)
+
+
+def generate_delivery(session: Session, sale_id: int):
+    sale = session.get(Sale, sale_id)
+    if not sale:
+        raise NotFoundError("单据不存在")
+    if sale.order_stage not in ["SALE_CONFIRMED", "DELIVERY_CREATED"]:
+        raise BadRequestError("仅销售清单可生成送货单")
+    if sale.biz_status == "VOIDED":
+        raise BadRequestError("单据已作废，无法生成")
+
+    sale.order_stage = "DELIVERY_CREATED"
+    sale.delivery_status = "GENERATED"
+    if not sale.delivery_created_at:
+        sale.delivery_created_at = utc_now()
+
+    session.add(sale)
+    session.commit()
+    return get_sale(session, sale.id)
+
+
+def update_settlement(session: Session, *, sale_id: int, settlement_status: str, paid_amount: float,
+                      payment_method: str | None, payment_note: str | None):
     from app.services import settlement_service
 
     settlement_service.apply_settlement_compat(
@@ -212,6 +295,9 @@ def list_sales(session: Session, customer_id: int | None, page: int, page_size: 
             customer_name=c.name,
             buyer_name=s.contact_name_snapshot,
             project=s.project,
+            order_stage=s.order_stage,
+            inventory_effected=s.inventory_effected,
+            delivery_status=s.delivery_status,
             sale_date=s.sale_date,
             note=s.note,
             total_amount=s.total_amount,
@@ -227,7 +313,8 @@ def list_sales(session: Session, customer_id: int | None, page: int, page_size: 
 
 
 def get_sale(session: Session, sale_id: int) -> SaleRead:
-    row = session.exec(select(Sale, Customer).join(Customer, Customer.id == Sale.customer_id).where(Sale.id == sale_id)).first()
+    row = session.exec(
+        select(Sale, Customer).join(Customer, Customer.id == Sale.customer_id).where(Sale.id == sale_id)).first()
     if not row:
         raise NotFoundError("单据不存在")
 
@@ -250,7 +337,8 @@ def get_sale(session: Session, sale_id: int) -> SaleRead:
             qty=si.qty,
             unit_price=si.unit_price or si.sold_price,
             line_total=si.line_total,
-            gross_profit=round((float(si.unit_price or si.sold_price) - float(p.standard_cost or 0)) * float(si.qty), 2),
+            gross_profit=round((float(si.unit_price or si.sold_price) - float(p.standard_cost or 0)) * float(si.qty),
+                               2),
             note=si.remark,
         )
         for (si, p) in item_rows
@@ -264,6 +352,9 @@ def get_sale(session: Session, sale_id: int) -> SaleRead:
         buyer_id=sale.buyer_id,
         buyer_name=sale.contact_name_snapshot,
         project=sale.project,
+        order_stage=sale.order_stage,
+        inventory_effected=sale.inventory_effected,
+        delivery_status=sale.delivery_status,
         sale_date=sale.sale_date,
         note=sale.note,
         total_amount=sale.total_amount,
@@ -281,9 +372,17 @@ def get_sale(session: Session, sale_id: int) -> SaleRead:
 
 
 def recompute_sale_payment(session: Session, sale: Sale):
-    paid_direct = float(session.exec(select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.sale_id == sale.id)).one() or 0)
-    paid_alloc = float(session.exec(select(func.coalesce(func.sum(PaymentAllocation.amount), 0)).where(PaymentAllocation.sale_id == sale.id)).one() or 0)
-    paid = round(paid_direct + paid_alloc, 2)
+    paid_direct = float(session.exec(
+        select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.sale_id == sale.id,
+                                                                 Payment.scene != "REVERSAL")).one() or 0)
+    paid_alloc = float(session.exec(select(func.coalesce(func.sum(PaymentAllocation.amount), 0)).where(
+        PaymentAllocation.sale_id == sale.id)).one() or 0)
+    # 扣除冲销/撤销金额
+    reversed_amount = float(session.exec(
+        select(func.coalesce(func.sum(Payment.amount), 0)).where(Payment.sale_id == sale.id,
+                                                                 Payment.scene == "REVERSAL")).one() or 0)
+
+    paid = round(paid_direct + paid_alloc + reversed_amount, 2)
     sale.paid_amount = paid
     sale.ar_amount = round(max(float(sale.total_amount) - sale.paid_amount, 0), 2)
     sale.payment_status = _compute_payment_status(float(sale.total_amount), float(sale.paid_amount))

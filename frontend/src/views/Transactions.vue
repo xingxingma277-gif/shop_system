@@ -7,7 +7,7 @@
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
           <el-date-picker v-model="salesFilters.dateRange" type="daterange" range-separator="~" start-placeholder="开始" end-placeholder="结束" />
           <el-input v-model="salesFilters.q" placeholder="单号/客户名/商品名" style="width:240px" clearable />
-          <el-select v-model="salesFilters.status" clearable placeholder="状态" style="width:140px">
+          <el-select v-model="salesFilters.status" clearable placeholder="收款状态" style="width:140px">
             <el-option label="未结清" value="unpaid" />
             <el-option label="部分结清" value="partial" />
             <el-option label="已结清" value="paid" />
@@ -17,12 +17,17 @@
 
         <el-table :data="salesRows" border>
           <el-table-column prop="occurred_at" label="时间" min-width="160"><template #default="{row}">{{ formatDateTime(row.occurred_at) }}</template></el-table-column>
-          <el-table-column prop="sale_no" label="单号" min-width="150"><template #default="{row}"><el-button link type="primary" @click="goSale(row.sale_id)">{{ row.sale_no }}</el-button></template></el-table-column>
+          <el-table-column prop="sale_no" label="单号" min-width="150">
+            <template #default="{row}">
+               <el-button link type="primary" @click="goSale(row.sale_id)">{{ row.sale_no }}</el-button>
+               <el-tag v-if="row.order_stage === 'QUOTE'" type="info" size="small" style="margin-left:4px">报价单</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="customer_name" label="客户" min-width="160"><template #default="{row}"><el-button link type="primary" @click="goCustomer(row.customer_id)">{{ row.customer_name }}</el-button></template></el-table-column>
           <el-table-column prop="total_amount" label="应收" width="100" />
           <el-table-column prop="paid_amount" label="已收" width="100" />
           <el-table-column prop="balance" label="未收" width="100" />
-          <el-table-column prop="status" label="状态" width="120">
+          <el-table-column prop="status" label="收款状态" width="120">
             <template #default="{row}">
               <el-tag v-if="row.status==='paid'" type="success">已结清</el-tag>
               <el-tag v-else-if="row.status==='partial'" type="warning">部分结清</el-tag>
@@ -33,23 +38,21 @@
         </el-table>
       </el-tab-pane>
 
-      <el-tab-pane label="还款记录" name="payments">
+      <!-- 明确为还款记录 -->
+      <el-tab-pane label="后续还款记录" name="payments">
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
           <el-date-picker v-model="payFilters.dateRange" type="daterange" range-separator="~" start-placeholder="开始" end-placeholder="结束" />
           <el-input v-model="payFilters.q" placeholder="客户名/订单号" style="width:220px" clearable />
-          <el-select v-model="payFilters.method" clearable placeholder="方式" style="width:140px">
-            <el-option label="现金" value="cash" />
-            <el-option label="微信" value="wechat" />
-            <el-option label="支付宝" value="alipay" />
-            <el-option label="转账" value="transfer" />
+          <el-select v-model="payFilters.method" clearable placeholder="收款方式" style="width:140px">
+            <el-option v-for="m in paymentMethods" :key="m.value" :label="m.label" :value="m.value" />
           </el-select>
           <el-button type="primary" @click="loadPayments">查询</el-button>
         </div>
 
         <el-table :data="payRows" border>
-          <el-table-column prop="occurred_at" label="时间" min-width="160"><template #default="{row}">{{ formatDateTime(row.occurred_at) }}</template></el-table-column>
+          <el-table-column prop="occurred_at" label="还款时间" min-width="160"><template #default="{row}">{{ formatDateTime(row.occurred_at) }}</template></el-table-column>
           <el-table-column prop="customer_name" label="客户" min-width="160"><template #default="{row}"><el-button link type="primary" @click="goCustomer(row.customer_id)">{{ row.customer_name }}</el-button></template></el-table-column>
-          <el-table-column prop="method" label="方式" width="110" />
+          <el-table-column prop="method" label="方式" width="110"><template #default="{row}">{{ paymentMethodText(row.method) }}</template></el-table-column>
           <el-table-column prop="amount" label="金额" width="100" />
           <el-table-column label="关联订单" min-width="220">
             <template #default="{row}">{{ foldSaleNos(row.sale_nos) }}</template>
@@ -67,12 +70,16 @@
 
 <script setup>
 import dayjs from 'dayjs'
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { listTransactionPayments, listTransactionSales } from '../api/transactions'
 import { formatDateTime } from '../utils/format'
+import { useDictsStore } from '../stores/dicts'
 
 const router = useRouter()
+const dicts = useDictsStore()
+const paymentMethods = computed(() => dicts.paymentMethods)
+
 const tab = ref('sales')
 const page = ref(1)
 const pageSize = ref(20)
@@ -92,6 +99,11 @@ const payFilters = reactive({
   q: '',
   method: '',
 })
+
+function paymentMethodText(v) {
+  const f = dicts.paymentMethods.find(m => m.value === v)
+  return f ? f.label : (v || '-')
+}
 
 function onPage(p) {
   page.value = p

@@ -35,21 +35,22 @@ def list_sales_transactions(
 
     stmt = select(Sale, Customer).join(Customer, Customer.id == Sale.customer_id)
 
-    # 修复：允许显示所有单据，不再仅仅过滤出 partial 或 paid 的数据
     if start_dt:
         stmt = stmt.where(Sale.sale_date >= start_dt)
     if end_dt:
         stmt = stmt.where(Sale.sale_date <= end_dt)
     if status in {"unpaid", "partial", "paid"}:
         stmt = stmt.where(Sale.payment_status == status)
+
     if q and q.strip():
         like = f"%{q.strip()}%"
-        stmt = stmt.outerjoin(SaleItem, SaleItem.sale_id == Sale.id).outerjoin(Product,
-                                                                               Product.id == SaleItem.product_id).where(
+        # 使用子查询防止外连接导致的同一单据重复出现
+        subq = select(SaleItem.sale_id).join(Product, Product.id == SaleItem.product_id).where(Product.name.ilike(like))
+        stmt = stmt.where(
             or_(
                 Sale.sale_no.ilike(like),
                 Customer.name.ilike(like),
-                Product.name.ilike(like),
+                Sale.id.in_(subq)
             )
         )
 
@@ -63,6 +64,7 @@ def list_sales_transactions(
             "sale_no": s.sale_no,
             "customer_id": c.id,
             "customer_name": c.name,
+            "order_stage": s.order_stage,
             "total_amount": s.total_amount,
             "paid_amount": s.paid_amount,
             "balance": s.ar_amount,
@@ -87,6 +89,9 @@ def list_payment_transactions(
     end_dt = _parse_iso(end_date, end_of_day=True)
 
     stmt = select(Payment, Customer).join(Customer, Customer.id == Payment.customer_id)
+    # 只跟踪后续还款和冲销等，不包含 ORDER_CHECKOUT
+    stmt = stmt.where(Payment.scene.in_(["POST_SALE_REPAYMENT", "ALLOCATION", "REVERSAL", "MANUAL_ADJUSTMENT"]))
+
     if start_dt:
         stmt = stmt.where(Payment.paid_at >= start_dt)
     if end_dt:

@@ -1,19 +1,19 @@
 from typing import Optional
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.core.errors import BadRequestError, NotFoundError
 from app.core.time import utc_now
-from sqlmodel import select
 
 from app.models import InventoryTxn, Payment, Product, Sale, SaleItem, SaleOperation
 from app.services import payment_service
 
 _ALLOWED_SETTLEMENT = {"UNPAID", "PARTIAL", "PAID"}
-_ALLOWED_METHODS = {"cash", "wechat", "alipay", "bank_transfer", "bank", "transfer", "other", "现金", "微信", "支付宝", "银行卡", "转账", "其他"}
+_ALLOWED_METHODS = {"cash", "wechat", "alipay", "bank_transfer", "other", "现金", "微信", "支付宝", "转账", "其他"}
 
 
-def _target_paid(total_amount: float, settlement_status: str, paid_amount: float, payment_method: Optional[str]) -> float:
+def _target_paid(total_amount: float, settlement_status: str, paid_amount: float,
+                 payment_method: Optional[str]) -> float:
     status = (settlement_status or "").upper()
     if status not in _ALLOWED_SETTLEMENT:
         raise BadRequestError("settlement_status 仅支持 UNPAID/PARTIAL/PAID")
@@ -35,13 +35,13 @@ def _target_paid(total_amount: float, settlement_status: str, paid_amount: float
 
 
 def apply_settlement_compat(
-    session: Session,
-    *,
-    sale_id: int,
-    settlement_status: str,
-    paid_amount: float,
-    payment_method: Optional[str],
-    payment_note: Optional[str],
+        session: Session,
+        *,
+        sale_id: int,
+        settlement_status: str,
+        paid_amount: float,
+        payment_method: Optional[str],
+        payment_note: Optional[str],
 ):
     sale = session.get(Sale, sale_id)
     if not sale:
@@ -57,13 +57,13 @@ def apply_settlement_compat(
             customer_id=sale.customer_id,
             sale_id=sale.id,
             pay_type="settlement_adjust" if delta > 0 else "settlement_reverse",
+            scene="POST_SALE_REPAYMENT" if delta > 0 else "REVERSAL",
             amount=delta,
             method=payment_method or "other",
             paid_at=utc_now(),
             note=payment_note,
         )
         session.add(pay)
-        # 修复：必须在此刻 Flush，否则接下来的 recompute_sale_payment 中的 SQL SUM 查不到这条新流水
         session.flush()
 
     payment_service.recompute_sale_payment(session, sale)
@@ -84,15 +84,17 @@ def mark_sale_void(session: Session, *, sale_id: int, note: Optional[str]):
     if sale.biz_status == "VOIDED":
         raise BadRequestError("单据已作废")
 
-    # 库存回补（作废单按整单回补）
-    rows = session.exec(select(SaleItem).where(SaleItem.sale_id == sale.id)).all()
-    for si in rows:
-        p = session.get(Product, si.product_id)
-        if not p:
-            continue
-        p.stock_quantity = round(float(p.stock_quantity or 0) + float(si.qty), 2)
-        session.add(InventoryTxn(product_id=p.id, change_qty=float(si.qty), after_qty=float(p.stock_quantity), biz_type="sale_void", biz_id=sale.id, sale_id=sale.id, note="销售作废回补库存"))
-        session.add(p)
+    # 库存回补（如果这单已经扣过库存）
+    if sale.inventory_effected:
+        rows = session.exec(select(SaleItem).where(SaleItem.sale_id == sale.id)).all()
+        for si in rows:
+            p = session.get(Product, si.product_id)
+            if not p:
+                continue
+            p.stock_quantity = round(float(p.stock_quantity or 0) + float(si.qty), 2)
+            session.add(InventoryTxn(product_id=p.id, change_qty=float(si.qty), after_qty=float(p.stock_quantity),
+                                     biz_type="sale_void", biz_id=sale.id, sale_id=sale.id, note="单据作废回补库存"))
+            session.add(p)
 
     sale.biz_status = "VOIDED"
     session.add(SaleOperation(sale_id=sale.id, op_type="VOID", amount=float(sale.total_amount), note=note))
@@ -119,6 +121,7 @@ def reverse_settlement(session: Session, *, sale_id: int, amount: Optional[float
             customer_id=sale.customer_id,
             sale_id=sale.id,
             pay_type="settlement_reverse",
+            scene="REVERSAL",
             amount=round(-reverse_amount, 2),
             method="other",
             paid_at=utc_now(),
@@ -126,7 +129,6 @@ def reverse_settlement(session: Session, *, sale_id: int, amount: Optional[float
         )
     )
     session.add(SaleOperation(sale_id=sale.id, op_type="REVERSE_SETTLEMENT", amount=reverse_amount, note=note))
-    # 修复：必须 Flush
     session.flush()
     payment_service.recompute_sale_payment(session, sale)
     session.add(sale)
@@ -140,7 +142,8 @@ def sale_operations(session: Session, *, sale_id: int):
         raise NotFoundError("单据不存在")
     rows = sorted(sale.operations, key=lambda x: (x.created_at, x.id), reverse=True)
     return [
-        {"id": row.id, "op_type": row.op_type, "amount": row.amount, "note": row.note, "created_at": row.created_at.isoformat().replace('+00:00', 'Z')}
+        {"id": row.id, "op_type": row.op_type, "amount": row.amount, "note": row.note,
+         "created_at": row.created_at.isoformat().replace('+00:00', 'Z')}
         for row in rows
     ]
 
@@ -149,6 +152,9 @@ def return_sale_stock(session: Session, *, sale_id: int, note: Optional[str]):
     sale = session.get(Sale, sale_id)
     if not sale:
         raise NotFoundError("单据不存在")
+    if not sale.inventory_effected:
+        raise BadRequestError("该单并未扣减库存，无法退货回补")
+
     rows = session.exec(select(SaleItem).where(SaleItem.sale_id == sale.id)).all()
     if not rows:
         raise BadRequestError("单据无明细")
@@ -157,7 +163,9 @@ def return_sale_stock(session: Session, *, sale_id: int, note: Optional[str]):
         if not p:
             continue
         p.stock_quantity = round(float(p.stock_quantity or 0) + float(si.qty), 2)
-        session.add(InventoryTxn(product_id=p.id, change_qty=float(si.qty), after_qty=float(p.stock_quantity), biz_type="sale_return", biz_id=sale.id, sale_id=sale.id, note=note or "销售退货回补库存"))
+        session.add(InventoryTxn(product_id=p.id, change_qty=float(si.qty), after_qty=float(p.stock_quantity),
+                                 biz_type="sale_return", biz_id=sale.id, sale_id=sale.id,
+                                 note=note or "销售退货回补库存"))
         session.add(p)
     session.add(SaleOperation(sale_id=sale.id, op_type="RETURN", amount=float(sale.total_amount), note=note))
     session.commit()
