@@ -44,6 +44,11 @@
           <span>应付管理</span>
         </el-menu-item>
 
+        <el-menu-item index="/reports">
+          <el-icon><PieChart /></el-icon>
+          <span>经营报表</span>
+        </el-menu-item>
+
         <el-menu-item index="/transactions">
           <el-icon><DataAnalysis /></el-icon>
           <span>交易记录</span>
@@ -66,7 +71,7 @@
 
 <script setup>
 import { useRoute } from 'vue-router'
-import { DocumentAdd, Goods, User, DataAnalysis, OfficeBuilding, ShoppingTrolley, List, CreditCard } from '@element-plus/icons-vue'
+import { DocumentAdd, Goods, User, DataAnalysis, OfficeBuilding, ShoppingTrolley, List, CreditCard, PieChart } from '@element-plus/icons-vue'
 
 const route = useRoute()
 </script>
