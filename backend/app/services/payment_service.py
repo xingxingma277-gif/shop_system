@@ -9,7 +9,8 @@ from app.core.time import utc_now
 from app.models import Customer, Payment, PaymentAllocation, Sale
 from app.services.sale_service import get_sale
 
-_ALLOWED_METHODS = {"cash", "wechat", "alipay", "bank_transfer", "other", "现金", "微信", "支付宝", "转账", "其他"}
+_ALLOWED_METHODS = {"cash", "wechat", "alipay", "bank_transfer", "other"}
+_METHOD_ALIASES = {"现金": "cash", "微信": "wechat", "支付宝": "alipay", "转账": "bank_transfer", "bank": "bank_transfer", "transfer": "bank_transfer", "其他": "other"}
 _ALLOWED_PAY_TYPES = {"paid_full", "credit", "partial"}
 
 
@@ -28,6 +29,13 @@ def _to_iso_z(dt: datetime) -> str:
 
 def _gen_receipt_no() -> str:
     return f"RC{utc_now().strftime('%Y%m%d%H%M%S%f')}"
+
+
+def _normalize_method(method: str) -> str:
+    value = _METHOD_ALIASES.get(method, method)
+    if value not in _ALLOWED_METHODS:
+        raise BadRequestError("付款方式不合法")
+    return value
 
 
 def _sum_sale_paid(session: Session, sale_id: int) -> float:
@@ -66,8 +74,7 @@ def create_payment(session: Session, sale_id: int, amount: float, method: str, p
     sale = session.get(Sale, sale_id)
     if not sale:
         raise NotFoundError("单据不存在")
-    if method not in _ALLOWED_METHODS:
-        raise BadRequestError("付款方式不合法")
+    method = _normalize_method(method)
     if amount <= 0:
         raise BadRequestError("金额必须大于0")
     if amount > float(sale.ar_amount) + 1e-6:
@@ -100,8 +107,7 @@ def submit_sale_payment(session: Session, sale_id: int, pay_type: str, method: s
         raise NotFoundError("单据不存在")
     if pay_type not in _ALLOWED_PAY_TYPES:
         raise BadRequestError("pay_type 不合法")
-    if method not in _ALLOWED_METHODS:
-        raise BadRequestError("method 不合法")
+    method = _normalize_method(method)
 
     pay_amount = float(sale.ar_amount) if pay_type == "paid_full" else (
         0.0 if pay_type == "credit" else float(amount or 0))
@@ -292,8 +298,7 @@ def allocate_to_sales(session: Session, *, customer_id: int, sale_ids: List[int]
                       paid_at: Optional[str], note: Optional[str]):
     if amount <= 0:
         raise BadRequestError("金额必须大于0")
-    if method not in _ALLOWED_METHODS:
-        raise BadRequestError("付款方式不合法")
+    method = _normalize_method(method)
     customer = session.get(Customer, customer_id)
     if not customer:
         raise NotFoundError("客户不存在")

@@ -8,12 +8,12 @@ export function createSale(data) {
   return http.post('/api/sales', data).then((r) => r.data)
 }
 
-export function convertToSale(id) {
-  return http.post(`/api/sales/${id}/convert_to_sale`).then((r) => r.data)
+export function convertToSale(id, payload) {
+  return http.post(`/api/sales/${id}/convert_to_sale`, payload).then((r) => r.data)
 }
 
-export function generateDelivery(id) {
-  return http.post(`/api/sales/${id}/generate_delivery`).then((r) => r.data)
+export function generateDelivery(id, payload) {
+  return http.post(`/api/sales/${id}/generate_delivery`, payload || {}).then((r) => r.data)
 }
 
 export function listSalesApi(params) {
