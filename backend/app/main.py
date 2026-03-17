@@ -15,6 +15,7 @@ from app.routers.suppliers import router as suppliers_router
 from app.routers.warehouses import router as warehouses_router
 from app.routers.purchases import router as purchases_router
 from app.routers.inventory import router as inventory_router
+from app.routers.purchase_payments import router as purchase_payments_router
 
 app = FastAPI(title="Shop System", version="1.2.0")
 
@@ -38,5 +39,6 @@ app.include_router(suppliers_router)
 app.include_router(warehouses_router)
 app.include_router(purchases_router)
 app.include_router(inventory_router)
+app.include_router(purchase_payments_router)
 
 app.include_router(transactions_router)
