@@ -128,6 +128,40 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
         'quote_count': sum(1 for row in sale_rows if row[3] == 'QUOTE'),
         'delivery_pending_count': sum(1 for row in sale_rows if row[3] in {'DELIVERY_PENDING', 'DELIVERY_CREATED'}),
     }
+    stage_breakdown = {}
+    for total_amount, paid_amount, ar_amount, order_stage in sale_rows:
+        stage = order_stage or 'UNKNOWN'
+        item = stage_breakdown.setdefault(stage, {
+            'order_stage': stage,
+            'count': 0,
+            'total_amount': 0.0,
+            'paid_amount': 0.0,
+            'ar_amount': 0.0,
+        })
+        item['count'] += 1
+        item['total_amount'] = round(item['total_amount'] + float(total_amount or 0), 2)
+        item['paid_amount'] = round(item['paid_amount'] + float(paid_amount or 0), 2)
+        item['ar_amount'] = round(item['ar_amount'] + float(ar_amount or 0), 2)
+
+    supplier_stmt = select(Purchase, Supplier).join(Supplier, Supplier.id == Purchase.supplier_id).where(Purchase.ap_amount > 0)
+    if start_date:
+        supplier_stmt = supplier_stmt.where(Purchase.purchase_date >= start_date)
+    if end_date:
+        supplier_stmt = supplier_stmt.where(Purchase.purchase_date <= end_date)
+    supplier_rows = session.exec(supplier_stmt).all()
+    supplier_ap_map = {}
+    for purchase, supplier in supplier_rows:
+        item = supplier_ap_map.setdefault(supplier.id, {
+            'supplier_id': supplier.id,
+            'supplier_name': supplier.name,
+            'purchase_count': 0,
+            'ap_amount': 0.0,
+            'paid_amount': 0.0,
+        })
+        item['purchase_count'] += 1
+        item['ap_amount'] = round(item['ap_amount'] + float(purchase.ap_amount or 0), 2)
+        item['paid_amount'] = round(item['paid_amount'] + float(purchase.paid_amount or 0), 2)
+    top_ap_suppliers = sorted(supplier_ap_map.values(), key=lambda row: (-row['ap_amount'], row['supplier_id']))[:5]
 
     low_stock_items = session.exec(
         select(Product).where(
@@ -157,6 +191,8 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
             **sale_summary,
         },
         'ap_aging': aging,
+        'order_stage_breakdown': sorted(stage_breakdown.values(), key=lambda row: (-row['count'], row['order_stage'])),
+        'top_ap_suppliers': top_ap_suppliers,
         'low_stock_items': [
             {
                 'id': item.id,

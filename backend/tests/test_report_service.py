@@ -35,6 +35,8 @@ def test_dashboard_summary_includes_kpis_low_stock_and_audits():
         assert data['kpis']['sale_total_amount'] == 200
         assert data['kpis']['delivery_pending_count'] == 1
         assert data['ap_aging']['total_ap_amount'] == 70
+        assert data['order_stage_breakdown'][0]['order_stage'] == 'DELIVERY_PENDING'
+        assert data['top_ap_suppliers'][0]['supplier_name'] == '供应商A'
         assert len(data['low_stock_items']) == 1
         assert data['low_stock_items'][0]['name'] == '低库存商品'
         assert len(data['recent_audits']) == 1
@@ -68,5 +70,7 @@ def test_dashboard_summary_respects_date_range_filters():
         assert data['kpis']['purchase_total_amount'] == 80
         assert data['kpis']['sale_total_amount'] == 120
         assert data['kpis']['quote_count'] == 1
+        assert data['order_stage_breakdown'][0]['order_stage'] == 'QUOTE'
+        assert data['top_ap_suppliers'][0]['supplier_name'] == '供应商B'
         assert len(data['recent_audits']) == 1
         assert data['recent_audits'][0]['actor_name'] == '新记录'

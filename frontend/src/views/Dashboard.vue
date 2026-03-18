@@ -75,6 +75,32 @@
       </el-col>
     </el-row>
 
+    <el-row :gutter="12">
+      <el-col :xs="24" :lg="12">
+        <el-card shadow="never">
+          <template #header><b>订单阶段分布</b></template>
+          <el-table :data="stageBreakdown" border>
+            <el-table-column prop="order_stage" label="阶段" width="160" />
+            <el-table-column prop="count" label="订单数" width="100" />
+            <el-table-column prop="total_amount" label="总金额" width="120" />
+            <el-table-column prop="paid_amount" label="已收" width="120" />
+            <el-table-column prop="ar_amount" label="应收" width="120" />
+          </el-table>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :lg="12">
+        <el-card shadow="never">
+          <template #header><b>应付 Top 供应商</b></template>
+          <el-table :data="topApSuppliers" border>
+            <el-table-column prop="supplier_name" label="供应商" min-width="180" />
+            <el-table-column prop="purchase_count" label="采购笔数" width="100" />
+            <el-table-column prop="paid_amount" label="已付" width="110" />
+            <el-table-column prop="ap_amount" label="应付" width="110" />
+          </el-table>
+        </el-card>
+      </el-col>
+    </el-row>
+
     <el-card shadow="never">
       <template #header><b>最近操作</b></template>
       <el-table :data="recentAudits" border>
@@ -100,6 +126,8 @@ const rangePreset = ref('30d')
 const kpis = reactive({ sale_total_amount: 0, sale_paid_amount: 0, sale_ar_amount: 0, inventory_txn_count: 0, purchase_total_amount: 0, purchase_ap_amount: 0, quote_count: 0, delivery_pending_count: 0 })
 const agingSummary = reactive({ '0_30': 0, '31_60': 0, '61_90': 0, '90_plus': 0 })
 const lowStockItems = ref([])
+const stageBreakdown = ref([])
+const topApSuppliers = ref([])
 const recentAudits = ref([])
 
 function buildRangeParams() {
@@ -116,6 +144,8 @@ async function loadDashboard() {
   Object.assign(kpis, data.kpis || {})
   Object.assign(agingSummary, data.ap_aging || {})
   lowStockItems.value = data.low_stock_items || []
+  stageBreakdown.value = data.order_stage_breakdown || []
+  topApSuppliers.value = data.top_ap_suppliers || []
   recentAudits.value = data.recent_audits || []
 }
 
