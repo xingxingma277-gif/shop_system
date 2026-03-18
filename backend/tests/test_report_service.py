@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.models import AuditLog, Product, Purchase, Sale, Supplier, Warehouse
+from app.models import AuditLog, Customer, Product, Purchase, Sale, Supplier, Warehouse
 from app.services import report_service
 
 
@@ -21,8 +21,12 @@ def test_dashboard_summary_includes_kpis_low_stock_and_audits():
         session.add(low_stock_product)
         session.commit()
 
+        customer = Customer(name='客户A')
+        session.add(customer)
+        session.commit()
+
         purchase = Purchase(purchase_no='PO001', supplier_id=supplier.id, warehouse_id=warehouse.id, total_amount=100, paid_amount=30, ap_amount=70, status='CONFIRMED')
-        sale = Sale(sale_no='SO001', customer_id=1, total_amount=200, paid_amount=80, ar_amount=120, order_stage='DELIVERY_PENDING', biz_status='NORMAL')
+        sale = Sale(sale_no='SO001', customer_id=customer.id, total_amount=200, paid_amount=80, ar_amount=120, order_stage='DELIVERY_PENDING', biz_status='NORMAL')
         log = AuditLog(actor_name='管理员', action='CREATE', resource_type='purchase', resource_id=1, detail='创建采购单')
         session.add(purchase)
         session.add(sale)
@@ -38,6 +42,7 @@ def test_dashboard_summary_includes_kpis_low_stock_and_audits():
         assert data['order_stage_breakdown'][0]['order_stage'] == 'DELIVERY_PENDING'
         assert data['order_funnel'][0]['order_stage'] == 'QUOTE'
         assert data['top_ap_suppliers'][0]['supplier_name'] == '供应商A'
+        assert data['top_customers'][0]['customer_name'] == '客户A'
         assert len(data['low_stock_items']) == 1
         assert data['low_stock_items'][0]['name'] == '低库存商品'
         assert len(data['recent_audits']) == 1
@@ -51,11 +56,15 @@ def test_dashboard_summary_respects_date_range_filters():
         session.add(warehouse)
         session.commit()
 
+        customer = Customer(name='客户B')
+        session.add(customer)
+        session.commit()
+
         now = datetime.utcnow()
         old_purchase = Purchase(purchase_no='PO-OLD', supplier_id=supplier.id, warehouse_id=warehouse.id, total_amount=50, paid_amount=10, ap_amount=40, status='CONFIRMED', purchase_date=now - timedelta(days=40))
         recent_purchase = Purchase(purchase_no='PO-NEW', supplier_id=supplier.id, warehouse_id=warehouse.id, total_amount=80, paid_amount=20, ap_amount=60, status='CONFIRMED', purchase_date=now - timedelta(days=2))
-        old_sale = Sale(sale_no='SO-OLD', customer_id=1, total_amount=90, paid_amount=20, ar_amount=70, order_stage='SALE_CONFIRMED', biz_status='NORMAL', sale_date=now - timedelta(days=45))
-        recent_sale = Sale(sale_no='SO-NEW', customer_id=1, total_amount=120, paid_amount=30, ar_amount=90, order_stage='QUOTE', biz_status='NORMAL', sale_date=now - timedelta(days=1))
+        old_sale = Sale(sale_no='SO-OLD', customer_id=customer.id, total_amount=90, paid_amount=20, ar_amount=70, order_stage='SALE_CONFIRMED', biz_status='NORMAL', sale_date=now - timedelta(days=45))
+        recent_sale = Sale(sale_no='SO-NEW', customer_id=customer.id, total_amount=120, paid_amount=30, ar_amount=90, order_stage='QUOTE', biz_status='NORMAL', sale_date=now - timedelta(days=1))
         old_log = AuditLog(actor_name='旧记录', action='CREATE', resource_type='sale', detail='old', created_at=now - timedelta(days=50))
         new_log = AuditLog(actor_name='新记录', action='CREATE', resource_type='sale', detail='new', created_at=now - timedelta(days=1))
         session.add(old_purchase)
@@ -74,5 +83,6 @@ def test_dashboard_summary_respects_date_range_filters():
         assert data['order_stage_breakdown'][0]['order_stage'] == 'QUOTE'
         assert data['order_funnel'][0]['count'] == 1
         assert data['top_ap_suppliers'][0]['supplier_name'] == '供应商B'
+        assert data['top_customers'][0]['customer_name'] == '客户B'
         assert len(data['recent_audits']) == 1
         assert data['recent_audits'][0]['actor_name'] == '新记录'

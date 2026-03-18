@@ -115,6 +115,18 @@
           </el-table>
         </el-card>
       </el-col>
+      <el-col :xs="24" :lg="12">
+        <el-card shadow="never">
+          <template #header><b>销售 Top 客户</b></template>
+          <el-table :data="topCustomers" border>
+            <el-table-column prop="customer_name" label="客户" min-width="180" />
+            <el-table-column prop="sale_count" label="订单数" width="100" />
+            <el-table-column prop="paid_amount" label="已收" width="110" />
+            <el-table-column prop="ar_amount" label="应收" width="110" />
+            <el-table-column prop="total_amount" label="销售额" width="120" />
+          </el-table>
+        </el-card>
+      </el-col>
     </el-row>
 
     <el-card shadow="never">
@@ -145,6 +157,7 @@ const lowStockItems = ref([])
 const orderFunnel = ref([])
 const stageBreakdown = ref([])
 const topApSuppliers = ref([])
+const topCustomers = ref([])
 const recentAudits = ref([])
 
 function buildRangeParams() {
@@ -164,6 +177,7 @@ async function loadDashboard() {
   orderFunnel.value = data.order_funnel || []
   stageBreakdown.value = data.order_stage_breakdown || []
   topApSuppliers.value = data.top_ap_suppliers || []
+  topCustomers.value = data.top_customers || []
   recentAudits.value = data.recent_audits || []
 }
 

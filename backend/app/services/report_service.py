@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from app.models import AuditLog, InventoryTxn, Product, Purchase, Sale, Supplier, Warehouse
+from app.models import AuditLog, Customer, InventoryTxn, Product, Purchase, Sale, Supplier, Warehouse
 
 
 def ap_summary(session: Session, supplier_id: int | None, start_date: datetime | None, end_date: datetime | None):
@@ -170,6 +170,28 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
         item['paid_amount'] = round(item['paid_amount'] + float(purchase.paid_amount or 0), 2)
     top_ap_suppliers = sorted(supplier_ap_map.values(), key=lambda row: (-row['ap_amount'], row['supplier_id']))[:5]
 
+    customer_stmt = select(Sale, Customer).join(Customer, Customer.id == Sale.customer_id).where(Sale.biz_status != 'VOID')
+    if start_date:
+        customer_stmt = customer_stmt.where(Sale.sale_date >= start_date)
+    if end_date:
+        customer_stmt = customer_stmt.where(Sale.sale_date <= end_date)
+    customer_rows = session.exec(customer_stmt).all()
+    customer_rank_map = {}
+    for sale, customer in customer_rows:
+        item = customer_rank_map.setdefault(customer.id, {
+            'customer_id': customer.id,
+            'customer_name': customer.name,
+            'sale_count': 0,
+            'total_amount': 0.0,
+            'paid_amount': 0.0,
+            'ar_amount': 0.0,
+        })
+        item['sale_count'] += 1
+        item['total_amount'] = round(item['total_amount'] + float(sale.total_amount or 0), 2)
+        item['paid_amount'] = round(item['paid_amount'] + float(sale.paid_amount or 0), 2)
+        item['ar_amount'] = round(item['ar_amount'] + float(sale.ar_amount or 0), 2)
+    top_customers = sorted(customer_rank_map.values(), key=lambda row: (-row['total_amount'], row['customer_id']))[:5]
+
     funnel = []
     previous_count = None
     for stage_code, stage_label in funnel_config:
@@ -220,6 +242,7 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
         'order_stage_breakdown': sorted(stage_breakdown.values(), key=lambda row: (-row['count'], row['order_stage'])),
         'order_funnel': funnel,
         'top_ap_suppliers': top_ap_suppliers,
+        'top_customers': top_customers,
         'low_stock_items': [
             {
                 'id': item.id,
