@@ -13,5 +13,6 @@ from .purchase import Purchase
 from .purchase_item import PurchaseItem
 from .supplier_payment import SupplierPayment
 from .ap_allocation import APAllocation
+from .inventory_adjustment import InventoryAdjustment
 
-__all__ = ["Customer", "CustomerContact", "Product", "Sale", "SaleItem", "Payment", "PaymentAllocation", "SaleOperation", "InventoryTxn", "Supplier", "Warehouse", "Purchase", "PurchaseItem", "SupplierPayment", "APAllocation"]
+__all__ = ["Customer", "CustomerContact", "Product", "Sale", "SaleItem", "Payment", "PaymentAllocation", "SaleOperation", "InventoryTxn", "Supplier", "Warehouse", "Purchase", "PurchaseItem", "SupplierPayment", "APAllocation", "InventoryAdjustment"]

@@ -39,6 +39,11 @@
           <span>库存台账</span>
         </el-menu-item>
 
+        <el-menu-item index="/inventory-adjustments">
+          <el-icon><Operation /></el-icon>
+          <span>库存调整</span>
+        </el-menu-item>
+
         <el-menu-item index="/accounts-payable">
           <el-icon><CreditCard /></el-icon>
           <span>应付管理</span>
@@ -71,7 +76,7 @@
 
 <script setup>
 import { useRoute } from 'vue-router'
-import { DocumentAdd, Goods, User, DataAnalysis, OfficeBuilding, ShoppingTrolley, List, CreditCard, PieChart } from '@element-plus/icons-vue'
+import { DocumentAdd, Goods, User, DataAnalysis, OfficeBuilding, ShoppingTrolley, List, CreditCard, PieChart, Operation } from '@element-plus/icons-vue'
 
 const route = useRoute()
 </script>

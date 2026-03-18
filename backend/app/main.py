@@ -17,6 +17,7 @@ from app.routers.purchases import router as purchases_router
 from app.routers.inventory import router as inventory_router
 from app.routers.purchase_payments import router as purchase_payments_router
 from app.routers.reports import router as reports_router
+from app.routers.inventory_adjustments import router as inventory_adjustments_router
 
 app = FastAPI(title="Shop System", version="1.2.0")
 
@@ -42,5 +43,6 @@ app.include_router(purchases_router)
 app.include_router(inventory_router)
 app.include_router(purchase_payments_router)
 app.include_router(reports_router)
+app.include_router(inventory_adjustments_router)
 
 app.include_router(transactions_router)

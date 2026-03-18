@@ -13,6 +13,7 @@ import Purchases from '../views/Purchases.vue'
 import Warehouses from '../views/Warehouses.vue'
 import Suppliers from '../views/Suppliers.vue'
 import Reports from '../views/Reports.vue'
+import InventoryAdjustments from '../views/InventoryAdjustments.vue'
 
 const routes = [
   { path: '/', redirect: '/new-sale' },
@@ -25,6 +26,7 @@ const routes = [
   { path: '/warehouses', component: Warehouses, meta: { title: '仓库管理' } },
   { path: '/purchases', component: Purchases, meta: { title: '采购管理' } },
   { path: '/inventory-ledger', component: InventoryLedger, meta: { title: '库存台账' } },
+  { path: '/inventory-adjustments', component: InventoryAdjustments, meta: { title: '库存调整' } },
   { path: '/accounts-payable', component: AccountsPayable, meta: { title: '应付管理' } },
   { path: '/reports', component: Reports, meta: { title: '经营报表' } },
   { path: '/sales/:id', component: SaleDetail, meta: { title: '订单详情' } },
