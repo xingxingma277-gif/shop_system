@@ -1,6 +1,6 @@
 <template>
   <el-card>
-    <template #header><b>收款确认 (后置还款补收)</b></template>
+    <template #header><b>统一收款</b></template>
     <div v-if="sale">
       <p>单号 #{{ sale.sale_no }} ｜应收：¥{{ sale.total_amount.toFixed(2) }} ｜未收：¥{{ sale.ar_amount.toFixed(2) }}</p>
       <el-form label-width="100px">
@@ -20,8 +20,8 @@
         </el-form-item>
         <el-form-item label="备注"><el-input v-model="form.note" /></el-form-item>
       </el-form>
-      <el-button type="primary" :loading="saving" @click="submit">确认提交补收</el-button>
-      <el-button @click="goProfile">回客户档案</el-button>
+      <el-button type="primary" :loading="saving" @click="submit">确认收款</el-button>
+      <el-button @click="goProfile">返回订单详情</el-button>
     </div>
   </el-card>
 </template>
@@ -41,7 +41,7 @@ const paymentMethods = computed(() => dicts.paymentMethods)
 const saleId = Number(route.params.id || route.query.sale_id)
 const sale = ref(null)
 const saving = ref(false)
-const form = reactive({ pay_type: 'paid_full', method: 'bank_transfer', amount: 0, note: '' })
+const form = reactive({ pay_type: "paid_full", method: "bank_transfer", amount: 0, note: "" })
 
 async function loadSale() {
   sale.value = await getSaleApi(saleId)
@@ -55,14 +55,14 @@ async function submit() {
     if (payload.pay_type !== 'partial') delete payload.amount
     const res = await submitSalePayment(saleId, payload)
     sale.value = res.sale
-    ElMessage.success('后置补款提交成功')
+    ElMessage.success('收款记录已保存')
   } finally {
     saving.value = false
   }
 }
 
 function goProfile() {
-  if (sale.value?.customer_id) router.push(`/customers/${sale.value.customer_id}`)
+  if (sale.value?.id) router.push(`/sales/${sale.value.id}`)
 }
 
 onMounted(loadSale)
