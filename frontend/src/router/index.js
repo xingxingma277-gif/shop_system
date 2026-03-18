@@ -54,8 +54,8 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   if (!to.path.startsWith('/admin')) return true
-  const username = localStorage.getItem('shop:auth_user')
-  if (username) return true
+  const token = localStorage.getItem('shop:auth_token')
+  if (token) return true
   return { path: '/login', query: { redirect: to.fullPath } }
 })
 

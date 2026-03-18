@@ -16,7 +16,10 @@ def test_authenticate_and_current_user_permissions():
         role = auth_admin_service.create_role(session, type('obj', (), {'code': 'admin', 'name': '管理员', 'permission_ids': [p1.id, p2.id]}))
         auth_admin_service.create_user(session, type('obj', (), {'username': 'admin', 'display_name': '管理员', 'password': 'secret123', 'role_ids': [role['id']], 'is_superuser': False}))
 
-        current = auth_service.authenticate(session, 'admin', 'secret123')
+        result = auth_service.authenticate(session, 'admin', 'secret123')
+        assert result['token']
+        current = result['user']
         assert current['username'] == 'admin'
         assert 'admin.user.manage' in current['permission_codes']
         assert 'audit.view' in current['permission_codes']
+        assert auth_service.get_user_by_token(session, f"Bearer {result['token']}", None).username == 'admin'

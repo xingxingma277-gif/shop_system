@@ -1,9 +1,16 @@
+from datetime import timedelta
+import secrets
+
 from fastapi import Header, HTTPException
 from sqlmodel import Session, select
 
 from app.core.errors import BadRequestError, NotFoundError
-from app.models import Permission, Role, RolePermission, User, UserRole
+from app.core.time import utc_now
+from app.models import AuthToken, Permission, Role, RolePermission, User, UserRole
 from app.services.auth_admin_service import _hash_password
+
+
+_TOKEN_TTL_SECONDS = 60 * 60 * 12
 
 
 def authenticate(session: Session, username: str, password: str):
@@ -12,13 +19,55 @@ def authenticate(session: Session, username: str, password: str):
         raise BadRequestError('用户名或密码错误')
     if user.status != 'ACTIVE':
         raise BadRequestError('用户已停用')
-    return build_current_user(session, user)
+    token = issue_token(session, user.id)
+    session.commit()
+    return {
+        'token': token.token,
+        'token_type': 'bearer',
+        'expires_in': _TOKEN_TTL_SECONDS,
+        'user': build_current_user(session, user),
+    }
 
 
-def get_user_by_header(session: Session, x_auth_user: str | None):
-    if not x_auth_user:
+def issue_token(session: Session, user_id: int):
+    token = AuthToken(user_id=user_id, token=secrets.token_hex(32), expires_at=utc_now() + timedelta(seconds=_TOKEN_TTL_SECONDS))
+    session.add(token)
+    session.flush()
+    return token
+
+
+def _extract_token(authorization: str | None, x_auth_token: str | None):
+    if authorization and authorization.lower().startswith('bearer '):
+        return authorization.split(' ', 1)[1].strip()
+    if x_auth_token:
+        return x_auth_token.strip()
+    return None
+
+
+def _is_expired(dt):
+    if dt.tzinfo is None:
+        return dt < utc_now().replace(tzinfo=None)
+    return dt < utc_now()
+
+
+def get_user_by_token(session: Session, authorization: str | None, x_auth_token: str | None):
+    token_value = _extract_token(authorization, x_auth_token)
+    if not token_value:
         return None
-    return session.exec(select(User).where(User.username == x_auth_user.strip())).first()
+    token = session.exec(select(AuthToken).where(AuthToken.token == token_value)).first()
+    if not token or _is_expired(token.expires_at):
+        return None
+    return session.get(User, token.user_id)
+
+
+def revoke_token(session: Session, authorization: str | None, x_auth_token: str | None):
+    token_value = _extract_token(authorization, x_auth_token)
+    if not token_value:
+        return
+    token = session.exec(select(AuthToken).where(AuthToken.token == token_value)).first()
+    if token:
+        session.delete(token)
+        session.commit()
 
 
 def build_current_user(session: Session, user: User):
@@ -39,9 +88,9 @@ def build_current_user(session: Session, user: User):
 
 
 def require_permissions(*codes: str):
-    def dependency(session: Session, x_auth_user: str | None = Header(default=None)):
+    def dependency(session: Session, authorization: str | None = Header(default=None), x_auth_token: str | None = Header(default=None)):
         existing_users = session.exec(select(User.id).limit(1)).first()
-        user = get_user_by_header(session, x_auth_user)
+        user = get_user_by_token(session, authorization, x_auth_token)
         if not existing_users:
             return None
         if not user:

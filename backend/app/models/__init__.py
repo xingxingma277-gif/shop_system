@@ -22,5 +22,6 @@ from .permission import Permission
 from .user_role import UserRole
 from .role_permission import RolePermission
 from .audit_log import AuditLog
+from .auth_token import AuthToken
 
-__all__ = ["Customer", "CustomerContact", "Product", "Sale", "SaleItem", "Payment", "PaymentAllocation", "SaleOperation", "InventoryTxn", "Supplier", "Warehouse", "Purchase", "PurchaseItem", "SupplierPayment", "APAllocation", "InventoryAdjustment", "InventoryCheck", "InventoryTransfer", "User", "Role", "Permission", "UserRole", "RolePermission", "AuditLog"]
+__all__ = ["Customer", "CustomerContact", "Product", "Sale", "SaleItem", "Payment", "PaymentAllocation", "SaleOperation", "InventoryTxn", "Supplier", "Warehouse", "Purchase", "PurchaseItem", "SupplierPayment", "APAllocation", "InventoryAdjustment", "InventoryCheck", "InventoryTransfer", "User", "Role", "Permission", "UserRole", "RolePermission", "AuditLog", "AuthToken"]

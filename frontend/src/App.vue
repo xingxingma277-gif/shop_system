@@ -86,12 +86,15 @@
 
 <script setup>
 import { useRoute } from 'vue-router'
+import { logout as logoutRequest } from './api/auth'
 import { Box, CreditCard, DataAnalysis, DocumentAdd, Goods, OfficeBuilding, PieChart, Setting, User } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const authDisplayName = localStorage.getItem('shop:auth_display_name')
 
-function logout() {
+async function logout() {
+  try { await logoutRequest() } catch (e) {}
+  localStorage.removeItem('shop:auth_token')
   localStorage.removeItem('shop:auth_user')
   localStorage.removeItem('shop:auth_display_name')
   window.location.href = '/login'

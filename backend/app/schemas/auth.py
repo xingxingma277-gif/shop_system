@@ -16,3 +16,10 @@ class CurrentUserRead(SQLModel):
     role_ids: List[int] = []
     role_names: List[str] = []
     permission_codes: List[str] = []
+
+
+class LoginRead(SQLModel):
+    token: str
+    token_type: str = 'bearer'
+    expires_in: int
+    user: CurrentUserRead

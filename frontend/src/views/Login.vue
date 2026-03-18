@@ -25,9 +25,10 @@ const form = reactive({ username: '', password: '' })
 
 async function submit() {
   try {
-    const user = await login(form)
-    localStorage.setItem('shop:auth_user', user.username)
-    localStorage.setItem('shop:auth_display_name', user.display_name)
+    const result = await login(form)
+    localStorage.setItem('shop:auth_token', result.token)
+    localStorage.setItem('shop:auth_user', result.user.username)
+    localStorage.setItem('shop:auth_display_name', result.user.display_name)
     ElMessage.success('登录成功')
     router.replace(route.query.redirect || '/admin/users')
   } catch (err) {

@@ -6,8 +6,8 @@ const http = axios.create({
 })
 
 http.interceptors.request.use((config) => {
-  const username = localStorage.getItem('shop:auth_user')
-  if (username) config.headers['X-Auth-User'] = username
+  const token = localStorage.getItem('shop:auth_token')
+  if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
@@ -15,6 +15,7 @@ http.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err?.response?.status === 401) {
+      localStorage.removeItem('shop:auth_token')
       localStorage.removeItem('shop:auth_user')
       localStorage.removeItem('shop:auth_display_name')
     }
