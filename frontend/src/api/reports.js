@@ -11,3 +11,7 @@ export function getApAging(params) {
 export function getInventorySummary(params) {
   return http.get('/api/reports/inventory-summary', { params }).then((r) => r.data)
 }
+
+export function getDashboardSummary(params) {
+  return http.get('/api/reports/dashboard-summary', { params }).then((r) => r.data)
+}

@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from app.models import InventoryTxn, Purchase, Supplier, Warehouse
+from app.models import AuditLog, InventoryTxn, Product, Purchase, Sale, Supplier, Warehouse
 
 
 def ap_summary(session: Session, supplier_id: int | None, start_date: datetime | None, end_date: datetime | None):
@@ -106,3 +106,67 @@ def ap_aging(session: Session, supplier_id: int | None, as_of: datetime | None):
             'bucket': bucket,
         })
     return {'items': items, 'summary': {'as_of': cutoff, **buckets, 'total_ap_amount': round(sum(x['ap_amount'] for x in items), 2), 'count': len(items)}}
+
+
+
+def dashboard_summary(session: Session):
+    ap = ap_summary(session, None, None, None)['summary']
+    aging = ap_aging(session, None, None)['summary']
+    inventory = inventory_summary(session, None, None, None, None)['summary']
+
+    sale_rows = session.exec(select(Sale.total_amount, Sale.paid_amount, Sale.ar_amount, Sale.order_stage).where(Sale.biz_status != 'VOID')).all()
+    sale_summary = {
+        'sale_count': len(sale_rows),
+        'sale_total_amount': round(sum(float(row[0] or 0) for row in sale_rows), 2),
+        'sale_paid_amount': round(sum(float(row[1] or 0) for row in sale_rows), 2),
+        'sale_ar_amount': round(sum(float(row[2] or 0) for row in sale_rows), 2),
+        'quote_count': sum(1 for row in sale_rows if row[3] == 'QUOTE'),
+        'delivery_pending_count': sum(1 for row in sale_rows if row[3] in {'DELIVERY_PENDING', 'DELIVERY_CREATED'}),
+    }
+
+    low_stock_items = session.exec(
+        select(Product).where(
+            Product.is_active == True,
+            Product.stock_warning_threshold > 0,
+            Product.stock_quantity <= Product.stock_warning_threshold,
+        ).order_by(Product.stock_quantity.asc(), Product.id.asc()).limit(8)
+    ).all()
+
+    recent_audits = session.exec(
+        select(AuditLog).order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(8)
+    ).all()
+
+    return {
+        'kpis': {
+            'purchase_total_amount': ap.get('total_purchase_amount', 0),
+            'purchase_paid_amount': ap.get('total_paid_amount', 0),
+            'purchase_ap_amount': ap.get('total_ap_amount', 0),
+            'inventory_in_qty': inventory.get('in_qty', 0),
+            'inventory_out_qty': inventory.get('out_qty', 0),
+            'inventory_txn_count': inventory.get('count', 0),
+            **sale_summary,
+        },
+        'ap_aging': aging,
+        'low_stock_items': [
+            {
+                'id': item.id,
+                'name': item.name,
+                'sku': item.sku,
+                'stock_quantity': item.stock_quantity,
+                'stock_warning_threshold': item.stock_warning_threshold,
+            }
+            for item in low_stock_items
+        ],
+        'recent_audits': [
+            {
+                'id': log.id,
+                'actor_name': log.actor_name,
+                'action': log.action,
+                'resource_type': log.resource_type,
+                'resource_id': log.resource_id,
+                'detail': log.detail,
+                'created_at': log.created_at,
+            }
+            for log in recent_audits
+        ],
+    }

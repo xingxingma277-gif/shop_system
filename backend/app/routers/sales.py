@@ -21,7 +21,7 @@ from app.schemas.sale import (
     SaleReverseSettlementCreate,
     SaleSettlementUpdate,
 )
-from app.services import auth_service, payment_service, sale_export_service, sale_service, settlement_service
+from app.services import audit_log_service, auth_service, payment_service, sale_export_service, sale_service, settlement_service
 
 router = APIRouter(prefix="/api/sales", tags=["Sales"])
 
@@ -32,25 +32,37 @@ def get_next_no(_: dict | None = Depends(auth_service.require_permissions('sale.
 
 
 @router.post("", response_model=SaleRead)
-def create_sale(payload: SaleCreate, _: dict | None = Depends(auth_service.require_permissions('sale.manage')), session: Session = Depends(get_session)):
+def create_sale(payload: SaleCreate, current: dict | None = Depends(auth_service.require_permissions('sale.manage')), session: Session = Depends(get_session)):
     try:
-        return sale_service.create_sale(session, payload)
+        sale = sale_service.create_sale(session, payload)
+        if current:
+            audit_log_service.record(session, action='CREATE', resource_type='sale', resource_id=sale.id, detail=f'创建订单 {sale.sale_no}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
+        return sale
     except (NotFoundError, BadRequestError) as exc:
         raise HTTPException(status_code=400, detail=exc.message)
 
 
 @router.post("/{sale_id}/convert_to_sale", response_model=SaleRead)
-def convert_to_sale(sale_id: int, payload: QuoteConvertPayload | None = None, _: dict | None = Depends(auth_service.require_permissions('sale.manage')), session: Session = Depends(get_session)):
+def convert_to_sale(sale_id: int, payload: QuoteConvertPayload | None = None, current: dict | None = Depends(auth_service.require_permissions('sale.manage')), session: Session = Depends(get_session)):
     try:
-        return sale_service.convert_quote_to_sale(session, sale_id, payload)
+        sale = sale_service.convert_quote_to_sale(session, sale_id, payload)
+        if current:
+            audit_log_service.record(session, action='CONVERT', resource_type='sale', resource_id=sale.id, detail=f'报价转销售 {sale.sale_no}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
+        return sale
     except (NotFoundError, BadRequestError) as exc:
         raise HTTPException(status_code=400, detail=exc.message)
 
 
 @router.post("/{sale_id}/generate_delivery", response_model=SaleRead)
-def generate_delivery(sale_id: int, payload: DeliveryCreatePayload | None = None, _: dict | None = Depends(auth_service.require_permissions('sale.manage')), session: Session = Depends(get_session)):
+def generate_delivery(sale_id: int, payload: DeliveryCreatePayload | None = None, current: dict | None = Depends(auth_service.require_permissions('sale.manage')), session: Session = Depends(get_session)):
     try:
-        return sale_service.generate_delivery(session, sale_id, payload)
+        sale = sale_service.generate_delivery(session, sale_id, payload)
+        if current:
+            audit_log_service.record(session, action='DELIVERY', resource_type='sale', resource_id=sale.id, detail=f'生成送货单 {sale.sale_no}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
+        return sale
     except (NotFoundError, BadRequestError) as exc:
         raise HTTPException(status_code=400, detail=exc.message)
 
@@ -94,7 +106,7 @@ def submit_settlement(sale_id: int, payload: SaleSettlementUpdate, _: dict | Non
 
 
 @router.post("/{sale_id}/payments", response_model=SalePaymentSubmitResponse)
-def submit_sale_payment(sale_id: int, payload: SalePaymentCreate, _: dict | None = Depends(auth_service.require_permissions('sale.manage')), session: Session = Depends(get_session)):
+def submit_sale_payment(sale_id: int, payload: SalePaymentCreate, current: dict | None = Depends(auth_service.require_permissions('sale.manage')), session: Session = Depends(get_session)):
     try:
         sale, payment = payment_service.submit_sale_payment(
             session,
@@ -105,6 +117,9 @@ def submit_sale_payment(sale_id: int, payload: SalePaymentCreate, _: dict | None
             note=payload.note,
             scene=payload.scene or "POST_SALE_REPAYMENT"
         )
+        if current:
+            audit_log_service.record(session, action='PAY', resource_type='sale', resource_id=sale.id, detail=f'订单收款 {sale.sale_no}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
         return {"sale": sale, "payment": payment}
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message)
@@ -122,10 +137,14 @@ def sale_payment_records(sale_id: int, _: dict | None = Depends(auth_service.req
 
 
 @router.post("/{sale_id}/void", response_model=SaleRead)
-def void_sale(sale_id: int, payload: SaleOperationCreate, _: dict | None = Depends(auth_service.require_permissions('sale.manage')), session: Session = Depends(get_session)):
+def void_sale(sale_id: int, payload: SaleOperationCreate, current: dict | None = Depends(auth_service.require_permissions('sale.manage')), session: Session = Depends(get_session)):
     try:
         settlement_service.mark_sale_void(session, sale_id=sale_id, note=payload.note)
-        return sale_service.get_sale(session, sale_id)
+        sale = sale_service.get_sale(session, sale_id)
+        if current:
+            audit_log_service.record(session, action='VOID', resource_type='sale', resource_id=sale.id, detail=f'作废订单 {sale.sale_no}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
+        return sale
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message)
     except BadRequestError as exc:
@@ -134,11 +153,15 @@ def void_sale(sale_id: int, payload: SaleOperationCreate, _: dict | None = Depen
 
 @router.post("/{sale_id}/reverse_settlement", response_model=SaleRead)
 def reverse_sale_settlement(sale_id: int, payload: SaleReverseSettlementCreate,
-                            _: dict | None = Depends(auth_service.require_permissions('sale.manage')),
+                            current: dict | None = Depends(auth_service.require_permissions('sale.manage')),
                             session: Session = Depends(get_session)):
     try:
         settlement_service.reverse_settlement(session, sale_id=sale_id, amount=payload.amount, note=payload.note)
-        return sale_service.get_sale(session, sale_id)
+        sale = sale_service.get_sale(session, sale_id)
+        if current:
+            audit_log_service.record(session, action='REVERSE_SETTLEMENT', resource_type='sale', resource_id=sale.id, detail=f'冲销结算 {sale.sale_no}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
+        return sale
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message)
     except BadRequestError as exc:
@@ -202,10 +225,14 @@ def export_sale_pdf(sale_id: int, doc_type: str = "sale", _: dict | None = Depen
 
 
 @router.post("/{sale_id}/return", response_model=SaleRead)
-def return_sale(sale_id: int, payload: SaleOperationCreate, _: dict | None = Depends(auth_service.require_permissions('sale.manage')), session: Session = Depends(get_session)):
+def return_sale(sale_id: int, payload: SaleOperationCreate, current: dict | None = Depends(auth_service.require_permissions('sale.manage')), session: Session = Depends(get_session)):
     try:
         settlement_service.return_sale_stock(session, sale_id=sale_id, note=payload.note)
-        return sale_service.get_sale(session, sale_id)
+        sale = sale_service.get_sale(session, sale_id)
+        if current:
+            audit_log_service.record(session, action='RETURN', resource_type='sale', resource_id=sale.id, detail=f'销售退货 {sale.sale_no}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
+        return sale
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message)
     except BadRequestError as exc:

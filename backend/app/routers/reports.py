@@ -9,6 +9,15 @@ from app.services import auth_service, report_service
 router = APIRouter(prefix='/api/reports', tags=['Reports'])
 
 
+
+
+@router.get('/dashboard-summary')
+def dashboard_summary(
+        _: dict | None = Depends(auth_service.require_permissions('report.view')),
+        session: Session = Depends(get_session),
+):
+    return report_service.dashboard_summary(session)
+
 @router.get('/ap-summary')
 def ap_summary(
         supplier_id: int | None = Query(None),
