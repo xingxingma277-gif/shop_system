@@ -29,6 +29,21 @@
       </el-row>
     </el-card>
 
+    <el-card shadow="never">
+      <template #header><b>经营预警</b></template>
+      <el-empty v-if="!dashboardAlerts.length" description="暂无经营预警" :image-size="80" />
+      <div v-else style="display:flex;flex-direction:column;gap:8px;">
+        <el-alert
+          v-for="item in dashboardAlerts"
+          :key="item.code"
+          :title="item.title"
+          :description="item.message"
+          :type="item.level === 'danger' ? 'error' : 'warning'"
+          :closable="false"
+        />
+      </div>
+    </el-card>
+
     <el-row :gutter="12">
       <el-col :xs="24" :lg="8">
         <el-card shadow="never">
@@ -186,6 +201,7 @@ const topApSuppliers = ref([])
 const topCustomers = ref([])
 const receivableAging = reactive({ '0_30': 0, '31_60': 0, '61_90': 0, '90_plus': 0 })
 const topReceivableCustomers = ref([])
+const dashboardAlerts = ref([])
 const recentAudits = ref([])
 
 function buildRangeParams() {
@@ -208,6 +224,7 @@ async function loadDashboard() {
   topCustomers.value = data.top_customers || []
   Object.assign(receivableAging, data.ar_aging || {})
   topReceivableCustomers.value = data.top_receivable_customers || []
+  dashboardAlerts.value = data.alerts || []
   recentAudits.value = data.recent_audits || []
 }
 

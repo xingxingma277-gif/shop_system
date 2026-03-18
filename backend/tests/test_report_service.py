@@ -45,6 +45,7 @@ def test_dashboard_summary_includes_kpis_low_stock_and_audits():
         assert data['top_customers'][0]['customer_name'] == '客户A'
         assert data['top_receivable_customers'][0]['customer_name'] == '客户A'
         assert data['ar_aging']['0_30'] == 120
+        assert any(alert['code'] == 'LOW_STOCK' for alert in data['alerts'])
         assert len(data['low_stock_items']) == 1
         assert data['low_stock_items'][0]['name'] == '低库存商品'
         assert len(data['recent_audits']) == 1
@@ -90,3 +91,29 @@ def test_dashboard_summary_respects_date_range_filters():
         assert data['ar_aging']['0_30'] == 90
         assert len(data['recent_audits']) == 1
         assert data['recent_audits'][0]['actor_name'] == '新记录'
+
+
+def test_dashboard_summary_builds_actionable_alerts():
+    with _make_session() as session:
+        supplier = Supplier(code='SUP-3', name='供应商C')
+        warehouse = Warehouse(code='WH-3', name='仓库C')
+        customer = Customer(name='客户C')
+        low_stock_product = Product(name='预警商品', stock_quantity=1, stock_warning_threshold=5, standard_price=10, standard_cost=5)
+        session.add(supplier)
+        session.add(warehouse)
+        session.add(customer)
+        session.add(low_stock_product)
+        session.commit()
+
+        old_purchase = Purchase(purchase_no='PO-ALERT', supplier_id=supplier.id, warehouse_id=warehouse.id, total_amount=200, paid_amount=20, ap_amount=180, status='CONFIRMED', purchase_date=datetime.utcnow() - timedelta(days=120))
+        old_sale = Sale(sale_no='SO-ALERT', customer_id=customer.id, total_amount=300, paid_amount=50, ar_amount=250, order_stage='QUOTE', biz_status='NORMAL', sale_date=datetime.utcnow() - timedelta(days=120))
+        session.add(old_purchase)
+        session.add(old_sale)
+        session.commit()
+
+        data = report_service.dashboard_summary(session)
+        codes = {alert['code'] for alert in data['alerts']}
+
+        assert 'LOW_STOCK' in codes
+        assert 'AP_90_PLUS' in codes
+        assert 'AR_90_PLUS' in codes

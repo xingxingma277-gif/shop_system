@@ -235,6 +235,38 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
         audit_stmt.order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(8)
     ).all()
 
+    alerts = []
+    if low_stock_items:
+        alerts.append({
+            'level': 'warning',
+            'code': 'LOW_STOCK',
+            'title': '低库存预警',
+            'message': f'当前有 {len(low_stock_items)} 个商品触发低库存预警。',
+        })
+    if float(aging.get('90_plus', 0) or 0) > 0:
+        alerts.append({
+            'level': 'danger',
+            'code': 'AP_90_PLUS',
+            'title': '应付账龄超 90 天',
+            'message': f"90 天以上应付余额为 {aging.get('90_plus', 0)}。",
+        })
+    if float(ar_aging.get('90_plus', 0) or 0) > 0:
+        alerts.append({
+            'level': 'danger',
+            'code': 'AR_90_PLUS',
+            'title': '应收账龄超 90 天',
+            'message': f"90 天以上应收余额为 {ar_aging.get('90_plus', 0)}。",
+        })
+    for idx, item in enumerate(funnel[1:], start=1):
+        prev = funnel[idx - 1]
+        if prev['count'] >= 3 and item['conversion_rate'] is not None and item['conversion_rate'] < 60:
+            alerts.append({
+                'level': 'warning',
+                'code': f"FUNNEL_{prev['order_stage']}_{item['order_stage']}",
+                'title': '订单流程转化偏低',
+                'message': f"{prev['label']}→{item['label']} 转化率仅 {item['conversion_rate']}%。",
+            })
+
     return {
         'kpis': {
             'purchase_total_amount': ap.get('total_purchase_amount', 0),
@@ -262,6 +294,7 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
             }
             for item in low_stock_items
         ],
+        'alerts': alerts,
         'recent_audits': [
             {
                 'id': log.id,
