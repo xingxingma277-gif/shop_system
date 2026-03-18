@@ -129,6 +129,13 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
         'delivery_pending_count': sum(1 for row in sale_rows if row[3] in {'DELIVERY_PENDING', 'DELIVERY_CREATED'}),
     }
     stage_breakdown = {}
+    funnel_config = [
+        ('QUOTE', '报价中'),
+        ('SALE_CONFIRMED', '已转销售'),
+        ('DELIVERY_CREATED', '已生成送货单'),
+        ('DELIVERED', '已送达'),
+        ('COMPLETED', '已完成'),
+    ]
     for total_amount, paid_amount, ar_amount, order_stage in sale_rows:
         stage = order_stage or 'UNKNOWN'
         item = stage_breakdown.setdefault(stage, {
@@ -163,6 +170,25 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
         item['paid_amount'] = round(item['paid_amount'] + float(purchase.paid_amount or 0), 2)
     top_ap_suppliers = sorted(supplier_ap_map.values(), key=lambda row: (-row['ap_amount'], row['supplier_id']))[:5]
 
+    funnel = []
+    previous_count = None
+    for stage_code, stage_label in funnel_config:
+        row = stage_breakdown.get(stage_code, {'count': 0, 'total_amount': 0.0, 'paid_amount': 0.0, 'ar_amount': 0.0})
+        count = int(row.get('count', 0) or 0)
+        conversion_rate = None
+        if previous_count and previous_count > 0:
+            conversion_rate = round(count / previous_count * 100, 2)
+        funnel.append({
+            'order_stage': stage_code,
+            'label': stage_label,
+            'count': count,
+            'total_amount': row.get('total_amount', 0.0),
+            'paid_amount': row.get('paid_amount', 0.0),
+            'ar_amount': row.get('ar_amount', 0.0),
+            'conversion_rate': conversion_rate,
+        })
+        previous_count = count
+
     low_stock_items = session.exec(
         select(Product).where(
             Product.is_active == True,
@@ -192,6 +218,7 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
         },
         'ap_aging': aging,
         'order_stage_breakdown': sorted(stage_breakdown.values(), key=lambda row: (-row['count'], row['order_stage'])),
+        'order_funnel': funnel,
         'top_ap_suppliers': top_ap_suppliers,
         'low_stock_items': [
             {

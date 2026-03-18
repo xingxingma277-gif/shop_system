@@ -78,6 +78,19 @@
     <el-row :gutter="12">
       <el-col :xs="24" :lg="12">
         <el-card shadow="never">
+          <template #header><b>订单流程漏斗</b></template>
+          <el-table :data="orderFunnel" border>
+            <el-table-column prop="label" label="阶段" width="150" />
+            <el-table-column prop="count" label="订单数" width="100" />
+            <el-table-column prop="total_amount" label="金额" width="120" />
+            <el-table-column label="转化率" width="120">
+              <template #default="{ row }">{{ row.conversion_rate == null ? '-' : `${row.conversion_rate}%` }}</template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :lg="12">
+        <el-card shadow="never">
           <template #header><b>订单阶段分布</b></template>
           <el-table :data="stageBreakdown" border>
             <el-table-column prop="order_stage" label="阶段" width="160" />
@@ -88,6 +101,9 @@
           </el-table>
         </el-card>
       </el-col>
+    </el-row>
+
+    <el-row :gutter="12">
       <el-col :xs="24" :lg="12">
         <el-card shadow="never">
           <template #header><b>应付 Top 供应商</b></template>
@@ -126,6 +142,7 @@ const rangePreset = ref('30d')
 const kpis = reactive({ sale_total_amount: 0, sale_paid_amount: 0, sale_ar_amount: 0, inventory_txn_count: 0, purchase_total_amount: 0, purchase_ap_amount: 0, quote_count: 0, delivery_pending_count: 0 })
 const agingSummary = reactive({ '0_30': 0, '31_60': 0, '61_90': 0, '90_plus': 0 })
 const lowStockItems = ref([])
+const orderFunnel = ref([])
 const stageBreakdown = ref([])
 const topApSuppliers = ref([])
 const recentAudits = ref([])
@@ -144,6 +161,7 @@ async function loadDashboard() {
   Object.assign(kpis, data.kpis || {})
   Object.assign(agingSummary, data.ap_aging || {})
   lowStockItems.value = data.low_stock_items || []
+  orderFunnel.value = data.order_funnel || []
   stageBreakdown.value = data.order_stage_breakdown || []
   topApSuppliers.value = data.top_ap_suppliers || []
   recentAudits.value = data.recent_audits || []
