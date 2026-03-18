@@ -3,8 +3,8 @@
     <el-card shadow="never" class="mb-12">
       <template #header>
         <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-          <div style="font-weight:700;">新建开单</div>
-          <el-button type="primary" @click="goToNextStep">{{ form.order_stage === 'QUOTE' ? '生成报价单' : '去结算并开单' }}</el-button>
+          <div style="font-weight:700;">新建订单</div>
+          <el-button type="primary" @click="goToNextStep">{{ form.order_stage === 'QUOTE' ? '下一步' : '去结算并开单' }}</el-button>
         </div>
       </template>
 
@@ -84,7 +84,7 @@
   <!-- 第二步：订单结算界面 -->
   <div v-if="step === 'checkout'">
     <el-card shadow="never">
-      <template #header><div style="font-weight:700">订单结算确认 (销售清单)</div></template>
+      <template #header><div style="font-weight:700">销售单确认（付款确认）</div></template>
 
       <el-descriptions :column="2" border>
         <el-descriptions-item label="单号">{{ form.sale_no }}</el-descriptions-item>
@@ -165,7 +165,7 @@ import { useCatalogStore } from '../stores/catalog'
 import { useDictsStore } from '../stores/dicts'
 import { createBuyer, getCustomerProductPriceHistory, listBuyers } from '../api/customers'
 import { getLastPricing } from '../api/pricing'
-import { createSale, getNextSaleNo, getSaleApi, submitSaleSettlement } from '../api/sales'
+import { createSale, getNextSaleNo, getSaleApi } from '../api/sales'
 import { formatDateTime, money } from '../utils/format'
 
 const router = useRouter()
@@ -259,6 +259,7 @@ async function submitDirectly() {
       project: form.project || null,
       note: form.note || null,
       order_stage: form.order_stage,
+      order_type: form.order_stage === "QUOTE" ? "quote" : "sale_direct",
       items: validItems
     })
     ElMessage.success('报价单保存成功')
@@ -284,18 +285,14 @@ async function submitFinal() {
       project: form.project || null,
       note: form.note || null,
       order_stage: form.order_stage,
+      order_type: "sale_direct",
+      settlement_status: checkoutForm.settlement_status,
+      paid_amount: Number(checkoutForm.paid_amount || 0),
+      payment_method: checkoutForm.settlement_status === "UNPAID" ? null : checkoutForm.payment_method,
+      payment_note: checkoutForm.payment_note || null,
       items: validItems
     })
-
-    if (checkoutForm.settlement_status !== 'UNPAID') {
-      await submitSaleSettlement(sale.id, {
-        settlement_status: checkoutForm.settlement_status,
-        paid_amount: Number(checkoutForm.paid_amount || 0),
-        payment_method: checkoutForm.payment_method,
-        payment_note: checkoutForm.payment_note || null,
-      })
-    }
-    ElMessage.success('开单并结算成功')
+    ElMessage.success('销售单创建成功')
     await router.push(`/sales/${sale.id}`)
   } catch (err) {
     ElMessage.error(String(err?.response?.data?.detail || err?.message || '单据保存失败'))
