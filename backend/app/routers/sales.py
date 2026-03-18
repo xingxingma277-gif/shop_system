@@ -11,6 +11,8 @@ from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_session
 from app.schemas.sale import (
     SaleCreate,
+    DeliveryCreatePayload,
+    QuoteConvertPayload,
     SaleOperationCreate,
     SalePage,
     SalePaymentCreate,
@@ -38,17 +40,17 @@ def create_sale(payload: SaleCreate, session: Session = Depends(get_session)):
 
 
 @router.post("/{sale_id}/convert_to_sale", response_model=SaleRead)
-def convert_to_sale(sale_id: int, session: Session = Depends(get_session)):
+def convert_to_sale(sale_id: int, payload: QuoteConvertPayload | None = None, session: Session = Depends(get_session)):
     try:
-        return sale_service.convert_quote_to_sale(session, sale_id)
+        return sale_service.convert_quote_to_sale(session, sale_id, payload)
     except (NotFoundError, BadRequestError) as exc:
         raise HTTPException(status_code=400, detail=exc.message)
 
 
 @router.post("/{sale_id}/generate_delivery", response_model=SaleRead)
-def generate_delivery(sale_id: int, session: Session = Depends(get_session)):
+def generate_delivery(sale_id: int, payload: DeliveryCreatePayload | None = None, session: Session = Depends(get_session)):
     try:
-        return sale_service.generate_delivery(session, sale_id)
+        return sale_service.generate_delivery(session, sale_id, payload)
     except (NotFoundError, BadRequestError) as exc:
         raise HTTPException(status_code=400, detail=exc.message)
 
@@ -56,11 +58,12 @@ def generate_delivery(sale_id: int, session: Session = Depends(get_session)):
 @router.get("", response_model=SalePage)
 def get_sales(
         customer_id: int | None = Query(None),
+        order_stage: str | None = Query(None),
         page: int = Query(1, ge=1),
         page_size: int = Query(20, ge=1, le=100),
         session: Session = Depends(get_session),
 ):
-    items, total, page, page_size = sale_service.list_sales(session, customer_id, page, page_size)
+    items, total, page, page_size = sale_service.list_sales(session, customer_id, order_stage, page, page_size)
     return SalePage(items=items, total=int(total), page=page, page_size=page_size)
 
 
