@@ -8,8 +8,11 @@ import SaleCheckout from '../views/SaleCheckout.vue'
 import SaleDetail from '../views/SaleDetail.vue'
 import Transactions from '../views/Transactions.vue'
 import InventoryLedger from '../views/InventoryLedger.vue'
+import InventoryChecks from '../views/InventoryChecks.vue'
+import InventoryTransfers from '../views/InventoryTransfers.vue'
 import AccountsPayable from '../views/AccountsPayable.vue'
 import Purchases from '../views/Purchases.vue'
+import PurchaseDetail from '../views/PurchaseDetail.vue'
 import Warehouses from '../views/Warehouses.vue'
 import Suppliers from '../views/Suppliers.vue'
 import Reports from '../views/Reports.vue'
@@ -25,7 +28,10 @@ const routes = [
   { path: '/suppliers', component: Suppliers, meta: { title: '供应商管理' } },
   { path: '/warehouses', component: Warehouses, meta: { title: '仓库管理' } },
   { path: '/purchases', component: Purchases, meta: { title: '采购管理' } },
+  { path: '/purchases/:id', component: PurchaseDetail, meta: { title: '采购单详情' } },
   { path: '/inventory-ledger', component: InventoryLedger, meta: { title: '库存台账' } },
+  { path: '/inventory-checks', component: InventoryChecks, meta: { title: '库存盘点' } },
+  { path: '/inventory-transfers', component: InventoryTransfers, meta: { title: '库存调拨' } },
   { path: '/inventory-adjustments', component: InventoryAdjustments, meta: { title: '库存调整' } },
   { path: '/accounts-payable', component: AccountsPayable, meta: { title: '应付管理' } },
   { path: '/reports', component: Reports, meta: { title: '经营报表' } },

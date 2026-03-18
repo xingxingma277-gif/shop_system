@@ -4,7 +4,8 @@ from sqlmodel import Session, select
 
 from app.core.errors import BadRequestError, NotFoundError
 from app.core.time import utc_now
-from app.models import InventoryTxn, Product, Purchase, PurchaseItem, Supplier, Warehouse
+from app.models import Product, Purchase, PurchaseItem, Supplier, Warehouse
+from app.services.inventory_service import post_txn
 
 _ALLOWED_STATUS = {'DRAFT', 'CONFIRMED', 'RECEIVED_PARTIAL', 'RECEIVED', 'VOIDED'}
 
@@ -117,20 +118,16 @@ def receive_purchase(session: Session, purchase_id: int, payload):
         it = item_map[row.purchase_item_id]
         qty = round(float(row.receive_qty), 2)
         it.received_qty = round(float(it.received_qty) + qty, 2)
-        prod = session.get(Product, it.product_id)
-        before = float(prod.stock_quantity or 0)
-        prod.stock_quantity = round(before + qty, 2)
-        session.add(prod)
-        session.add(it)
-        session.add(InventoryTxn(
+        post_txn(
+            session,
             product_id=it.product_id,
             warehouse_id=p.warehouse_id,
             change_qty=qty,
-            after_qty=prod.stock_quantity,
             biz_type='purchase_receive',
             biz_id=p.id,
             note=f'采购单{p.purchase_no}入库',
-        ))
+        )
+        session.add(it)
 
     all_items = list(item_map.values())
     if all(round(float(i.received_qty), 2) + 1e-6 >= round(float(i.qty), 2) for i in all_items):
@@ -144,14 +141,68 @@ def receive_purchase(session: Session, purchase_id: int, payload):
     return get_purchase(session, p.id)
 
 
-def list_purchases(session: Session, supplier_id: int | None, status: str | None):
+def return_purchase(session: Session, purchase_id: int, payload):
+    p = session.get(Purchase, purchase_id)
+    if not p:
+        raise NotFoundError('采购单不存在')
+    if p.status not in {'RECEIVED', 'RECEIVED_PARTIAL'}:
+        raise BadRequestError('当前状态不可退货')
+
+    item_map = {it.id: it for it in session.exec(select(PurchaseItem).where(PurchaseItem.purchase_id == p.id)).all()}
+    if not item_map:
+        raise BadRequestError('采购单明细为空')
+
+    for row in payload.items:
+        it = item_map.get(row.purchase_item_id)
+        if not it:
+            raise BadRequestError(f'采购明细不存在: {row.purchase_item_id}')
+        if float(row.return_qty) <= 0:
+            raise BadRequestError('退货数量必须大于0')
+        if float(row.return_qty) > float(it.received_qty) + 1e-6:
+            raise BadRequestError('退货数量超过已入库数量')
+
+    for row in payload.items:
+        it = item_map[row.purchase_item_id]
+        qty = round(float(row.return_qty), 2)
+        it.received_qty = round(float(it.received_qty) - qty, 2)
+        post_txn(
+            session,
+            product_id=it.product_id,
+            warehouse_id=p.warehouse_id,
+            change_qty=-qty,
+            biz_type='purchase_return',
+            biz_id=p.id,
+            note=f'采购单{p.purchase_no}退货',
+        )
+        session.add(it)
+
+    all_items = list(item_map.values())
+    if all(round(float(i.received_qty), 2) <= 0 for i in all_items):
+        p.status = 'CONFIRMED'
+    elif all(round(float(i.received_qty), 2) + 1e-6 >= round(float(i.qty), 2) for i in all_items):
+        p.status = 'RECEIVED'
+    else:
+        p.status = 'RECEIVED_PARTIAL'
+    if payload.note:
+        p.note = payload.note
+    session.add(p)
+    session.commit()
+    return get_purchase(session, p.id)
+
+
+def list_purchases(session: Session, supplier_id: int | None, status: str | None, page: int = 1, page_size: int = 20):
+    from app.services.pagination import paginate
+
     stmt = select(Purchase)
     if supplier_id:
         stmt = stmt.where(Purchase.supplier_id == supplier_id)
     if status:
         stmt = stmt.where(Purchase.status == status)
-    rows = session.exec(stmt.order_by(Purchase.purchase_date.desc(), Purchase.id.desc())).all()
-    return [get_purchase(session, r.id) for r in rows]
+    rows, total, page, page_size = paginate(session, stmt.order_by(Purchase.purchase_date.desc(), Purchase.id.desc()), page, page_size)
+    return {
+        'items': [get_purchase(session, r.id) for r in rows],
+        'meta': {'total': int(total), 'page': page, 'page_size': page_size}
+    }
 
 
 def get_purchase(session: Session, purchase_id: int):

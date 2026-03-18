@@ -19,6 +19,15 @@ def ap_summary(
     return report_service.ap_summary(session, supplier_id, start_date, end_date)
 
 
+@router.get('/ap-aging')
+def ap_aging(
+        supplier_id: int | None = Query(None),
+        as_of: datetime | None = Query(None),
+        session: Session = Depends(get_session),
+):
+    return report_service.ap_aging(session, supplier_id, as_of)
+
+
 @router.get('/inventory-summary')
 def inventory_summary(
         warehouse_id: int | None = Query(None),

@@ -20,6 +20,22 @@
         </el-table>
       </el-tab-pane>
 
+      <el-tab-pane label="AP Aging" name="aging">
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+          <el-select v-model="agingFilters.supplier_id" clearable filterable placeholder="供应商" style="width:240px"><el-option v-for="s in suppliers" :key="s.id" :label="s.name" :value="s.id" /></el-select>
+          <el-date-picker v-model="agingFilters.as_of" type="date" placeholder="账龄截止日" />
+          <el-button type="primary" @click="loadAging">查询</el-button>
+        </div>
+        <el-alert :title="`0-30天：${agingSummary['0_30'] || 0}，31-60天：${agingSummary['31_60'] || 0}，61-90天：${agingSummary['61_90'] || 0}，90+天：${agingSummary['90_plus'] || 0}`" type="warning" :closable="false" style="margin-bottom:8px;" />
+        <el-table :data="agingRows" border>
+          <el-table-column prop="purchase_no" label="采购单号" min-width="140" />
+          <el-table-column prop="supplier_name" label="供应商" min-width="140" />
+          <el-table-column prop="age_days" label="账龄(天)" width="100" />
+          <el-table-column prop="bucket" label="账龄区间" width="120" />
+          <el-table-column prop="ap_amount" label="应付金额" width="120" />
+        </el-table>
+      </el-tab-pane>
+
       <el-tab-pane label="库存流水汇总" name="inventory">
         <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
           <el-select v-model="invFilters.warehouse_id" clearable placeholder="仓库" style="width:220px"><el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" /></el-select>
@@ -43,7 +59,7 @@
 <script setup>
 import dayjs from 'dayjs'
 import { onMounted, reactive, ref } from 'vue'
-import { getApSummary, getInventorySummary } from '../api/reports'
+import { getApAging, getApSummary, getInventorySummary } from '../api/reports'
 import { listSuppliers } from '../api/suppliers'
 import { listWarehouses } from '../api/warehouses'
 
@@ -55,6 +71,10 @@ const warehouses = ref([])
 const apRows = ref([])
 const apSummary = reactive({ total_purchase_amount: 0, total_paid_amount: 0, total_ap_amount: 0 })
 const apFilters = reactive({ supplier_id: null, dateRange: [] })
+
+const agingRows = ref([])
+const agingSummary = reactive({ '0_30': 0, '31_60': 0, '61_90': 0, '90_plus': 0 })
+const agingFilters = reactive({ supplier_id: null, as_of: null })
 
 const invRows = ref([])
 const invSummary = reactive({ in_qty: 0, out_qty: 0, count: 0 })
@@ -68,6 +88,15 @@ async function loadAp() {
   })
   apRows.value = data.items || []
   Object.assign(apSummary, data.summary || {})
+}
+
+async function loadAging() {
+  const data = await getApAging({
+    supplier_id: agingFilters.supplier_id || undefined,
+    as_of: agingFilters.as_of ? dayjs(agingFilters.as_of).toISOString() : undefined,
+  })
+  agingRows.value = data.items || []
+  Object.assign(agingSummary, data.summary || {})
 }
 
 async function loadInventory() {
@@ -84,6 +113,7 @@ onMounted(async () => {
   suppliers.value = await listSuppliers({})
   warehouses.value = await listWarehouses({})
   await loadAp()
+  await loadAging()
   await loadInventory()
 })
 </script>

@@ -20,6 +20,6 @@ export function receivePurchase(id, data) {
   return http.post(`/api/purchases/${id}/receive`, data).then((r) => r.data)
 }
 
-export function listInventoryLedger(params) {
-  return http.get('/api/inventory/ledger', { params }).then((r) => r.data)
+export function returnPurchase(id, data) {
+  return http.post(`/api/purchases/${id}/return`, data).then((r) => r.data)
 }

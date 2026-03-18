@@ -1,7 +1,7 @@
 <template>
   <el-card>
     <template #header><div style="display:flex;justify-content:space-between;align-items:center;"><b>采购管理</b><el-button type="primary" @click="openCreate">新建采购单</el-button></div></template>
-    <div style="display:flex;gap:8px;margin-bottom:10px;">
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
       <el-select v-model="filters.supplier_id" clearable filterable placeholder="供应商" style="width:220px"><el-option v-for="s in suppliers" :key="s.id" :label="s.name" :value="s.id" /></el-select>
       <el-select v-model="filters.status" clearable placeholder="状态" style="width:160px"><el-option label="草稿" value="DRAFT" /><el-option label="已确认" value="CONFIRMED" /><el-option label="部分入库" value="RECEIVED_PARTIAL" /><el-option label="已入库" value="RECEIVED" /></el-select>
       <el-button type="primary" @click="load">查询</el-button>
@@ -13,13 +13,18 @@
       <el-table-column prop="total_amount" label="总金额" width="100" />
       <el-table-column prop="ap_amount" label="应付" width="100" />
       <el-table-column prop="status" label="状态" width="130" />
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" width="280">
         <template #default="{row}">
-          <el-button link type="primary" @click="confirmRow(row)" :disabled="row.status!=='DRAFT'">确认</el-button>
+          <el-button link @click="router.push(`/purchases/${row.id}`)">详情</el-button>
+          <el-button link type="primary" @click="confirmRow(row)" :disabled="row.status !== 'DRAFT'">确认</el-button>
           <el-button link type="success" @click="openReceive(row)" :disabled="!['CONFIRMED','RECEIVED_PARTIAL'].includes(row.status)">入库</el-button>
+          <el-button link type="warning" @click="openReturn(row)" :disabled="!['RECEIVED','RECEIVED_PARTIAL'].includes(row.status)">退货</el-button>
         </template>
       </el-table-column>
     </el-table>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+      <el-pagination layout="total, prev, pager, next" :current-page="page" :page-size="pageSize" :total="total" @current-change="onPageChange" />
+    </div>
   </el-card>
 
   <el-dialog v-model="createDialog" title="新建采购单" width="760px">
@@ -46,20 +51,34 @@
     </el-table>
     <template #footer><el-button @click="receiveDialog=false">取消</el-button><el-button type="primary" @click="submitReceive">确认入库</el-button></template>
   </el-dialog>
+
+  <el-dialog v-model="returnDialog" title="采购退货" width="720px">
+    <el-table :data="returnRows" border>
+      <el-table-column prop="product_name" label="商品" min-width="180" />
+      <el-table-column prop="received_qty" label="已入库" width="110" />
+      <el-table-column label="本次退货" width="160"><template #default="{row}"><el-input-number v-model="row.return_qty" :min="0" :max="Math.max(0, row.received_qty)" /></template></el-table-column>
+    </el-table>
+    <template #footer><el-button @click="returnDialog=false">取消</el-button><el-button type="primary" @click="submitReturn">确认退货</el-button></template>
+  </el-dialog>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { listSuppliers } from '../api/suppliers'
 import { listWarehouses } from '../api/warehouses'
 import { listProducts } from '../api/products'
-import { confirmPurchase, createPurchase, getPurchase, listPurchases, receivePurchase } from '../api/purchases'
+import { confirmPurchase, createPurchase, getPurchase, listPurchases, receivePurchase, returnPurchase } from '../api/purchases'
 
+const router = useRouter()
 const suppliers = ref([])
 const warehouses = ref([])
 const products = ref([])
 const rows = ref([])
+const total = ref(0)
+const page = ref(1)
+const pageSize = ref(20)
 const filters = reactive({ supplier_id: null, status: '' })
 
 const createDialog = ref(false)
@@ -69,6 +88,10 @@ const receiveDialog = ref(false)
 const receivePurchaseId = ref(null)
 const receiveRows = ref([])
 
+const returnDialog = ref(false)
+const returnPurchaseId = ref(null)
+const returnRows = ref([])
+
 async function loadBase() {
   suppliers.value = await listSuppliers({ status: 'ACTIVE' })
   warehouses.value = await listWarehouses({ status: 'ACTIVE' })
@@ -77,7 +100,14 @@ async function loadBase() {
 }
 
 async function load() {
-  rows.value = await listPurchases({ supplier_id: filters.supplier_id || undefined, status: filters.status || undefined })
+  const res = await listPurchases({ supplier_id: filters.supplier_id || undefined, status: filters.status || undefined, page: page.value, page_size: pageSize.value })
+  rows.value = res.items || []
+  total.value = res.total || 0
+}
+
+function onPageChange(nextPage) {
+  page.value = nextPage
+  load()
 }
 
 function openCreate() {
@@ -96,6 +126,7 @@ async function submitCreate() {
     createForm.supplier_id = null
     createForm.warehouse_id = null
     createForm.items = [{ product_id: null, qty: 1, unit_cost: 0 }]
+    page.value = 1
     await load()
   } catch (err) {
     ElMessage.error(err?.response?.data?.detail || '创建失败')
@@ -129,6 +160,26 @@ async function submitReceive() {
     await load()
   } catch (err) {
     ElMessage.error(err?.response?.data?.detail || '入库失败')
+  }
+}
+
+async function openReturn(row) {
+  const detail = await getPurchase(row.id)
+  returnPurchaseId.value = row.id
+  returnRows.value = (detail.items || []).map(it => ({ ...it, return_qty: Number(it.received_qty || 0) }))
+  returnDialog.value = true
+}
+
+async function submitReturn() {
+  try {
+    await returnPurchase(returnPurchaseId.value, {
+      items: returnRows.value.filter(r => Number(r.return_qty) > 0).map(r => ({ purchase_item_id: r.id, return_qty: Number(r.return_qty) }))
+    })
+    ElMessage.success('退货成功')
+    returnDialog.value = false
+    await load()
+  } catch (err) {
+    ElMessage.error(err?.response?.data?.detail || '退货失败')
   }
 }
 

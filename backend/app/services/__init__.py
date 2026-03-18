@@ -5,3 +5,6 @@ from . import purchase_service
 from . import purchase_payment_service
 from . import report_service
 from . import inventory_adjustment_service
+from . import inventory_service
+from . import inventory_check_service
+from . import inventory_transfer_service

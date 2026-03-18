@@ -6,7 +6,8 @@ from sqlmodel import Session, select
 
 from app.core.errors import BadRequestError, NotFoundError
 from app.core.time import utc_now
-from app.models import Customer, CustomerContact, InventoryTxn, Product, Sale, SaleItem, Payment, PaymentAllocation
+from app.models import Customer, CustomerContact, Product, Sale, SaleItem, Payment, PaymentAllocation
+from app.services.inventory_service import post_txn
 from app.schemas.sale import SaleItemRead, SaleRead, SaleSummary
 from app.services.pagination import paginate
 
@@ -178,19 +179,16 @@ def create_sale(session: Session, data) -> SaleRead:
                     f"商品【{p.name}】当前库存 {before_qty}，不足 {qty}，不能开单。若需开单请选择生成报价单。")
 
             if inventory_effected:
-                p.stock_quantity = round(before_qty - qty, 2)
-                session.add(
-                    InventoryTxn(
-                        product_id=p.id,
-                        change_qty=round(-qty, 2),
-                        after_qty=float(p.stock_quantity),
-                        biz_type="sale",
-                        biz_id=sale.id,
-                        sale_id=sale.id,
-                        note=f"销售单{sale.sale_no}扣减",
-                    )
+                post_txn(
+                    session,
+                    product_id=p.id,
+                    warehouse_id=None,
+                    change_qty=round(-qty, 2),
+                    biz_type="sale",
+                    biz_id=sale.id,
+                    sale_id=sale.id,
+                    note=f"销售单{sale.sale_no}扣减",
                 )
-                session.add(p)
 
             si = SaleItem(
                 sale_id=sale.id,
@@ -264,19 +262,16 @@ def convert_quote_to_sale(session: Session, sale_id: int, payload=None):
         if before_qty < float(si.qty):
             raise BadRequestError(f"商品【{p.name}】当前库存 {before_qty}，不足以完成此销售")
 
-        p.stock_quantity = round(before_qty - float(si.qty), 2)
-        session.add(
-            InventoryTxn(
-                product_id=p.id,
-                change_qty=round(-float(si.qty), 2),
-                after_qty=float(p.stock_quantity),
-                biz_type="sale",
-                biz_id=sale.id,
-                sale_id=sale.id,
-                note=f"报价单{sale.sale_no}转销售扣减",
-            )
+        post_txn(
+            session,
+            product_id=p.id,
+            warehouse_id=None,
+            change_qty=round(-float(si.qty), 2),
+            biz_type="sale",
+            biz_id=sale.id,
+            sale_id=sale.id,
+            note=f"报价单{sale.sale_no}转销售扣减",
         )
-        session.add(p)
 
     settlement_status = (getattr(payload, "settlement_status", None) or "UNPAID")
     if settlement_status not in _ALLOWED_SETTLEMENT:

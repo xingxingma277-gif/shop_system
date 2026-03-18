@@ -30,6 +30,17 @@ class PurchaseReceivePayload(SQLModel):
     items: List[PurchaseReceiveItem]
 
 
+
+
+class PurchaseReturnItem(SQLModel):
+    purchase_item_id: int
+    return_qty: float = Field(gt=0)
+
+
+class PurchaseReturnPayload(SQLModel):
+    note: Optional[str] = None
+    items: List[PurchaseReturnItem]
+
 class PurchaseItemRead(SQLModel):
     id: int
     product_id: int
@@ -56,3 +67,11 @@ class PurchaseRead(SQLModel):
     note: Optional[str] = None
     created_at: datetime
     items: List[PurchaseItemRead] = []
+
+
+
+class PurchasePage(SQLModel):
+    items: List[PurchaseRead]
+    total: int
+    page: int
+    page_size: int

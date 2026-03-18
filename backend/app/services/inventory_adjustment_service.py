@@ -4,7 +4,8 @@ from sqlmodel import Session, select
 
 from app.core.errors import BadRequestError, NotFoundError
 from app.core.time import utc_now
-from app.models import InventoryAdjustment, InventoryTxn, Product, Warehouse
+from app.models import InventoryAdjustment, Product, Warehouse
+from app.services.inventory_service import post_txn
 
 
 def _gen_adj_no() -> str:
@@ -44,18 +45,15 @@ def create_adjustment(session: Session, payload):
     session.add(adj)
     session.flush()
 
-    product.stock_quantity = after
-    session.add(product)
-
-    session.add(InventoryTxn(
+    post_txn(
+        session,
         product_id=product.id,
         warehouse_id=warehouse.id,
         change_qty=delta,
-        after_qty=after,
         biz_type='inventory_adjustment',
         biz_id=adj.id,
-        note=f'库存调整[{payload.adj_type}] {payload.reason or ""}'.strip(),
-    ))
+        note=f"库存调整[{payload.adj_type}] {payload.reason or ''}".strip(),
+    )
 
     session.commit()
     return get_adjustment(session, adj.id)

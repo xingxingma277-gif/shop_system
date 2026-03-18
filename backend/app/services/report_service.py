@@ -72,3 +72,37 @@ def inventory_summary(session: Session, warehouse_id: int | None, product_id: in
         "count": len(items),
     }
     return {"items": items, "summary": summary}
+
+
+
+def ap_aging(session: Session, supplier_id: int | None, as_of: datetime | None):
+    cutoff = as_of or datetime.utcnow()
+    stmt = select(Purchase, Supplier).join(Supplier, Supplier.id == Purchase.supplier_id).where(Purchase.ap_amount > 0)
+    if supplier_id:
+        stmt = stmt.where(Purchase.supplier_id == supplier_id)
+    rows = session.exec(stmt.order_by(Purchase.purchase_date.asc(), Purchase.id.asc())).all()
+    buckets = {'0_30': 0.0, '31_60': 0.0, '61_90': 0.0, '90_plus': 0.0}
+    items = []
+    for purchase, supplier in rows:
+        age_days = max((cutoff.date() - purchase.purchase_date.date()).days, 0)
+        amount = round(float(purchase.ap_amount), 2)
+        if age_days <= 30:
+            bucket = '0_30'
+        elif age_days <= 60:
+            bucket = '31_60'
+        elif age_days <= 90:
+            bucket = '61_90'
+        else:
+            bucket = '90_plus'
+        buckets[bucket] = round(buckets[bucket] + amount, 2)
+        items.append({
+            'purchase_id': purchase.id,
+            'purchase_no': purchase.purchase_no,
+            'supplier_id': purchase.supplier_id,
+            'supplier_name': supplier.name,
+            'purchase_date': purchase.purchase_date,
+            'age_days': age_days,
+            'ap_amount': amount,
+            'bucket': bucket,
+        })
+    return {'items': items, 'summary': {'as_of': cutoff, **buckets, 'total_ap_amount': round(sum(x['ap_amount'] for x in items), 2), 'count': len(items)}}

@@ -3,7 +3,7 @@
     <template #header><b>库存台账</b></template>
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
       <el-select v-model="filters.warehouse_id" clearable placeholder="仓库" style="width:180px"><el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" /></el-select>
-      <el-select v-model="filters.biz_type" clearable placeholder="业务类型" style="width:180px"><el-option label="销售出库" value="sale" /><el-option label="采购入库" value="purchase_receive" /></el-select>
+      <el-select v-model="filters.biz_type" clearable placeholder="业务类型" style="width:180px"><el-option label="销售出库" value="sale" /><el-option label="采购入库" value="purchase_receive" /><el-option label="采购退货" value="purchase_return" /><el-option label="库存调整" value="inventory_adjustment" /><el-option label="库存盘点" value="inventory_check" /><el-option label="调拨调出" value="inventory_transfer_out" /><el-option label="调拨调入" value="inventory_transfer_in" /></el-select>
       <el-date-picker v-model="filters.dateRange" type="daterange" start-placeholder="开始" end-placeholder="结束" />
       <el-button type="primary" @click="load">查询</el-button>
     </div>
@@ -23,7 +23,7 @@
 import dayjs from 'dayjs'
 import { onMounted, reactive, ref } from 'vue'
 import { listWarehouses } from '../api/warehouses'
-import { listInventoryLedger } from '../api/purchases'
+import { listInventoryLedger } from '../api/inventory'
 
 const rows = ref([])
 const warehouses = ref([])
