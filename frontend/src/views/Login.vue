@@ -15,22 +15,20 @@
 
 <script setup>
 import { reactive } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { login } from '../api/auth'
+import { setStoredAuth } from '../utils/auth'
 
-const router = useRouter()
 const route = useRoute()
 const form = reactive({ username: '', password: '' })
 
 async function submit() {
   try {
     const result = await login(form)
-    localStorage.setItem('shop:auth_token', result.token)
-    localStorage.setItem('shop:auth_user', result.user.username)
-    localStorage.setItem('shop:auth_display_name', result.user.display_name)
+    setStoredAuth(result.token, result.user)
     ElMessage.success('登录成功')
-    router.replace(route.query.redirect || '/admin/users')
+    window.location.href = route.query.redirect || '/dashboard'
   } catch (err) {
     ElMessage.error(err?.response?.data?.detail || '登录失败')
   }

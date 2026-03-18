@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { clearStoredAuth, getAuthToken } from '../utils/auth'
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || 'http://127.0.0.1:8000',
@@ -6,7 +7,7 @@ const http = axios.create({
 })
 
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem('shop:auth_token')
+  const token = getAuthToken()
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
@@ -14,11 +15,7 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err?.response?.status === 401) {
-      localStorage.removeItem('shop:auth_token')
-      localStorage.removeItem('shop:auth_user')
-      localStorage.removeItem('shop:auth_display_name')
-    }
+    if (err?.response?.status === 401) clearStoredAuth()
     return Promise.reject(err)
   }
 )
