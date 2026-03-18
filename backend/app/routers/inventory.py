@@ -7,7 +7,7 @@ from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_session
 from app.schemas.inventory_check import InventoryCheckCreate, InventoryCheckRead
 from app.schemas.inventory_transfer import InventoryTransferCreate, InventoryTransferRead
-from app.services import inventory_check_service, inventory_transfer_service, purchase_service
+from app.services import auth_service, inventory_check_service, inventory_transfer_service, purchase_service
 
 router = APIRouter(prefix='/api/inventory', tags=['Inventory'])
 
@@ -19,6 +19,7 @@ def inventory_ledger(
         biz_type: str | None = Query(None),
         start_date: datetime | None = Query(None),
         end_date: datetime | None = Query(None),
+        _: dict | None = Depends(auth_service.require_permissions('inventory.view')),
         session: Session = Depends(get_session),
 ):
     return {'items': purchase_service.list_inventory_ledger(session, warehouse_id, product_id, biz_type, start_date, end_date)}
@@ -31,13 +32,14 @@ def list_checks(
         status: str | None = Query(None),
         start_date: datetime | None = Query(None),
         end_date: datetime | None = Query(None),
+        _: dict | None = Depends(auth_service.require_permissions('inventory.view')),
         session: Session = Depends(get_session),
 ):
     return inventory_check_service.list_checks(session, warehouse_id, product_id, status, start_date, end_date)
 
 
 @router.post('/checks', response_model=InventoryCheckRead)
-def create_check(payload: InventoryCheckCreate, session: Session = Depends(get_session)):
+def create_check(payload: InventoryCheckCreate, _: dict | None = Depends(auth_service.require_permissions('inventory.manage')), session: Session = Depends(get_session)):
     try:
         return inventory_check_service.create_check(session, payload)
     except (BadRequestError, NotFoundError) as exc:
@@ -45,7 +47,7 @@ def create_check(payload: InventoryCheckCreate, session: Session = Depends(get_s
 
 
 @router.post('/checks/{check_id}/post', response_model=InventoryCheckRead)
-def post_check(check_id: int, session: Session = Depends(get_session)):
+def post_check(check_id: int, _: dict | None = Depends(auth_service.require_permissions('inventory.manage')), session: Session = Depends(get_session)):
     try:
         return inventory_check_service.post_check(session, check_id)
     except (BadRequestError, NotFoundError) as exc:
@@ -59,13 +61,14 @@ def list_transfers(
         status: str | None = Query(None),
         start_date: datetime | None = Query(None),
         end_date: datetime | None = Query(None),
+        _: dict | None = Depends(auth_service.require_permissions('inventory.view')),
         session: Session = Depends(get_session),
 ):
     return inventory_transfer_service.list_transfers(session, warehouse_id, product_id, status, start_date, end_date)
 
 
 @router.post('/transfers', response_model=InventoryTransferRead)
-def create_transfer(payload: InventoryTransferCreate, session: Session = Depends(get_session)):
+def create_transfer(payload: InventoryTransferCreate, _: dict | None = Depends(auth_service.require_permissions('inventory.manage')), session: Session = Depends(get_session)):
     try:
         return inventory_transfer_service.create_transfer(session, payload)
     except (BadRequestError, NotFoundError) as exc:
@@ -73,7 +76,7 @@ def create_transfer(payload: InventoryTransferCreate, session: Session = Depends
 
 
 @router.post('/transfers/{transfer_id}/post', response_model=InventoryTransferRead)
-def post_transfer(transfer_id: int, session: Session = Depends(get_session)):
+def post_transfer(transfer_id: int, _: dict | None = Depends(auth_service.require_permissions('inventory.manage')), session: Session = Depends(get_session)):
     try:
         return inventory_transfer_service.post_transfer(session, transfer_id)
     except (BadRequestError, NotFoundError) as exc:
