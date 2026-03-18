@@ -19,6 +19,38 @@
           <span>客户管理</span>
         </el-menu-item>
 
+        <el-menu-item index="/suppliers">
+          <el-icon><User /></el-icon>
+          <span>供应商管理</span>
+        </el-menu-item>
+
+        <el-menu-item index="/warehouses">
+          <el-icon><OfficeBuilding /></el-icon>
+          <span>仓库管理</span>
+        </el-menu-item>
+
+        <el-sub-menu index="inventory-group">
+          <template #title>
+            <el-icon><Box /></el-icon>
+            <span>采购与库存</span>
+          </template>
+          <el-menu-item index="/purchases">采购管理</el-menu-item>
+          <el-menu-item index="/inventory-ledger">库存台账</el-menu-item>
+          <el-menu-item index="/inventory-checks">库存盘点</el-menu-item>
+          <el-menu-item index="/inventory-transfers">库存调拨</el-menu-item>
+          <el-menu-item index="/inventory-adjustments">库存调整</el-menu-item>
+        </el-sub-menu>
+
+        <el-menu-item index="/accounts-payable">
+          <el-icon><CreditCard /></el-icon>
+          <span>应付管理</span>
+        </el-menu-item>
+
+        <el-menu-item index="/reports">
+          <el-icon><PieChart /></el-icon>
+          <span>经营报表</span>
+        </el-menu-item>
+
         <el-menu-item index="/transactions">
           <el-icon><DataAnalysis /></el-icon>
           <span>交易记录</span>
@@ -41,7 +73,7 @@
 
 <script setup>
 import { useRoute } from 'vue-router'
-import { DocumentAdd, Goods, User, DataAnalysis } from '@element-plus/icons-vue'
+import { Box, CreditCard, DataAnalysis, DocumentAdd, Goods, OfficeBuilding, PieChart, User } from '@element-plus/icons-vue'
 
 const route = useRoute()
 </script>
