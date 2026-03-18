@@ -10,3 +10,4 @@ from . import inventory_check_service
 from . import inventory_transfer_service
 from . import audit_log_service
 from . import auth_admin_service
+from . import auth_service

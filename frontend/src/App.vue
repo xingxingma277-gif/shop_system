@@ -70,7 +70,11 @@
     <el-container>
       <el-header class="header">
         <div style="font-weight:700;">{{ route.meta.title || '进销存' }}</div>
-        <el-tag type="info" effect="plain">本地单机版</el-tag>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <el-tag type="info" effect="plain">本地单机版</el-tag>
+          <el-tag v-if="authDisplayName" type="success" effect="plain">{{ authDisplayName }}</el-tag>
+          <el-button v-if="authDisplayName" link type="danger" @click="logout">退出</el-button>
+        </div>
       </el-header>
 
       <el-main class="main">
@@ -85,4 +89,11 @@ import { useRoute } from 'vue-router'
 import { Box, CreditCard, DataAnalysis, DocumentAdd, Goods, OfficeBuilding, PieChart, Setting, User } from '@element-plus/icons-vue'
 
 const route = useRoute()
+const authDisplayName = localStorage.getItem('shop:auth_display_name')
+
+function logout() {
+  localStorage.removeItem('shop:auth_user')
+  localStorage.removeItem('shop:auth_display_name')
+  window.location.href = '/login'
+}
 </script>

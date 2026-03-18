@@ -19,9 +19,11 @@ import Reports from '../views/Reports.vue'
 import InventoryAdjustments from '../views/InventoryAdjustments.vue'
 import AdminUsers from '../views/AdminUsers.vue'
 import AuditLogs from '../views/AuditLogs.vue'
+import Login from '../views/Login.vue'
 
 const routes = [
   { path: '/', redirect: '/new-sale' },
+  { path: '/login', component: Login, meta: { title: '登录' } },
   { path: '/new-sale', component: NewSale, meta: { title: '开单' } },
   { path: '/products', component: Products, meta: { title: '商品管理' } },
   { path: '/customers', component: Customers, meta: { title: '客户管理' } },
@@ -45,7 +47,16 @@ const routes = [
   { path: '/checkout', component: SaleCheckout, meta: { title: '收款' } }
 ]
 
-export default createRouter({
+const router = createRouter({
   history: createWebHistory(),
   routes
 })
+
+router.beforeEach((to) => {
+  if (!to.path.startsWith('/admin')) return true
+  const username = localStorage.getItem('shop:auth_user')
+  if (username) return true
+  return { path: '/login', query: { redirect: to.fullPath } }
+})
+
+export default router
