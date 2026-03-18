@@ -4,7 +4,14 @@
       <template #header>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
           <b>经营看板</b>
-          <div style="color:#909399;font-size:13px;">基于已登录用户可访问的报表数据生成</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <el-radio-group v-model="rangePreset" size="small" @change="handlePresetChange">
+              <el-radio-button label="7d">近7天</el-radio-button>
+              <el-radio-button label="30d">近30天</el-radio-button>
+              <el-radio-button label="all">全部</el-radio-button>
+            </el-radio-group>
+            <div style="color:#909399;font-size:13px;">基于已登录用户可访问的报表数据生成</div>
+          </div>
         </div>
       </template>
 
@@ -82,23 +89,38 @@
 </template>
 
 <script setup>
+import dayjs from 'dayjs'
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getDashboardSummary } from '../api/reports'
 import { hasPermission } from '../utils/auth'
 
 const router = useRouter()
+const rangePreset = ref('30d')
 const kpis = reactive({ sale_total_amount: 0, sale_paid_amount: 0, sale_ar_amount: 0, inventory_txn_count: 0, purchase_total_amount: 0, purchase_ap_amount: 0, quote_count: 0, delivery_pending_count: 0 })
 const agingSummary = reactive({ '0_30': 0, '31_60': 0, '61_90': 0, '90_plus': 0 })
 const lowStockItems = ref([])
 const recentAudits = ref([])
 
+function buildRangeParams() {
+  if (rangePreset.value === 'all') return {}
+  const days = rangePreset.value === '7d' ? 7 : 30
+  return {
+    start_date: dayjs().subtract(days, 'day').startOf('day').toISOString(),
+    end_date: dayjs().endOf('day').toISOString(),
+  }
+}
+
 async function loadDashboard() {
-  const data = await getDashboardSummary({})
+  const data = await getDashboardSummary(buildRangeParams())
   Object.assign(kpis, data.kpis || {})
   Object.assign(agingSummary, data.ap_aging || {})
   lowStockItems.value = data.low_stock_items || []
   recentAudits.value = data.recent_audits || []
+}
+
+function handlePresetChange() {
+  loadDashboard()
 }
 
 onMounted(loadDashboard)

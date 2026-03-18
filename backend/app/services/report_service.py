@@ -109,12 +109,17 @@ def ap_aging(session: Session, supplier_id: int | None, as_of: datetime | None):
 
 
 
-def dashboard_summary(session: Session):
-    ap = ap_summary(session, None, None, None)['summary']
-    aging = ap_aging(session, None, None)['summary']
-    inventory = inventory_summary(session, None, None, None, None)['summary']
+def dashboard_summary(session: Session, start_date: datetime | None = None, end_date: datetime | None = None):
+    ap = ap_summary(session, None, start_date, end_date)['summary']
+    aging = ap_aging(session, None, end_date or start_date or None)['summary']
+    inventory = inventory_summary(session, None, None, start_date, end_date)['summary']
 
-    sale_rows = session.exec(select(Sale.total_amount, Sale.paid_amount, Sale.ar_amount, Sale.order_stage).where(Sale.biz_status != 'VOID')).all()
+    sale_stmt = select(Sale.total_amount, Sale.paid_amount, Sale.ar_amount, Sale.order_stage).where(Sale.biz_status != 'VOID')
+    if start_date:
+        sale_stmt = sale_stmt.where(Sale.sale_date >= start_date)
+    if end_date:
+        sale_stmt = sale_stmt.where(Sale.sale_date <= end_date)
+    sale_rows = session.exec(sale_stmt).all()
     sale_summary = {
         'sale_count': len(sale_rows),
         'sale_total_amount': round(sum(float(row[0] or 0) for row in sale_rows), 2),
@@ -132,8 +137,13 @@ def dashboard_summary(session: Session):
         ).order_by(Product.stock_quantity.asc(), Product.id.asc()).limit(8)
     ).all()
 
+    audit_stmt = select(AuditLog)
+    if start_date:
+        audit_stmt = audit_stmt.where(AuditLog.created_at >= start_date)
+    if end_date:
+        audit_stmt = audit_stmt.where(AuditLog.created_at <= end_date)
     recent_audits = session.exec(
-        select(AuditLog).order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(8)
+        audit_stmt.order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(8)
     ).all()
 
     return {

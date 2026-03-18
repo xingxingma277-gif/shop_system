@@ -13,10 +13,12 @@ router = APIRouter(prefix='/api/reports', tags=['Reports'])
 
 @router.get('/dashboard-summary')
 def dashboard_summary(
+        start_date: datetime | None = Query(None),
+        end_date: datetime | None = Query(None),
         _: dict | None = Depends(auth_service.require_permissions('report.view')),
         session: Session = Depends(get_session),
 ):
-    return report_service.dashboard_summary(session)
+    return report_service.dashboard_summary(session, start_date, end_date)
 
 @router.get('/ap-summary')
 def ap_summary(

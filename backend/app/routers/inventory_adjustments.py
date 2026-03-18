@@ -6,7 +6,7 @@ from sqlmodel import Session
 from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_session
 from app.schemas.inventory_adjustment import InventoryAdjustmentCreate, InventoryAdjustmentRead
-from app.services import auth_service, inventory_adjustment_service
+from app.services import audit_log_service, auth_service, inventory_adjustment_service
 
 router = APIRouter(prefix='/api/inventory/adjustments', tags=['InventoryAdjustments'])
 
@@ -25,9 +25,13 @@ def list_adjustments(
 
 
 @router.post('', response_model=InventoryAdjustmentRead)
-def create_adjustment(payload: InventoryAdjustmentCreate, _: dict | None = Depends(auth_service.require_permissions('inventory.manage')), session: Session = Depends(get_session)):
+def create_adjustment(payload: InventoryAdjustmentCreate, current: dict | None = Depends(auth_service.require_permissions('inventory.manage')), session: Session = Depends(get_session)):
     try:
-        return inventory_adjustment_service.create_adjustment(session, payload)
+        adjustment = inventory_adjustment_service.create_adjustment(session, payload)
+        if current:
+            audit_log_service.record(session, action='CREATE', resource_type='inventory_adjustment', resource_id=adjustment.id, detail=f'创建库存调整 #{adjustment.id}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
+        return adjustment
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message)
     except BadRequestError as exc:

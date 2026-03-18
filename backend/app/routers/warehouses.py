@@ -4,7 +4,7 @@ from sqlmodel import Session
 from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_session
 from app.schemas.warehouse import WarehouseCreate, WarehouseRead, WarehouseUpdate
-from app.services import auth_service, warehouse_service
+from app.services import audit_log_service, auth_service, warehouse_service
 
 router = APIRouter(prefix='/api/warehouses', tags=['Warehouses'])
 
@@ -15,17 +15,25 @@ def list_warehouses(status: str | None = Query(None), _: dict | None = Depends(a
 
 
 @router.post('', response_model=WarehouseRead)
-def create_warehouse(payload: WarehouseCreate, _: dict | None = Depends(auth_service.require_permissions('warehouse.manage')), session: Session = Depends(get_session)):
+def create_warehouse(payload: WarehouseCreate, current: dict | None = Depends(auth_service.require_permissions('warehouse.manage')), session: Session = Depends(get_session)):
     try:
-        return warehouse_service.create_warehouse(session, payload)
+        warehouse = warehouse_service.create_warehouse(session, payload)
+        if current:
+            audit_log_service.record(session, action='CREATE', resource_type='warehouse', resource_id=warehouse.id, detail=f'创建仓库 {warehouse.name}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
+        return warehouse
     except (BadRequestError, NotFoundError) as exc:
         raise HTTPException(status_code=400, detail=exc.message)
 
 
 @router.put('/{warehouse_id}', response_model=WarehouseRead)
-def update_warehouse(warehouse_id: int, payload: WarehouseUpdate, _: dict | None = Depends(auth_service.require_permissions('warehouse.manage')), session: Session = Depends(get_session)):
+def update_warehouse(warehouse_id: int, payload: WarehouseUpdate, current: dict | None = Depends(auth_service.require_permissions('warehouse.manage')), session: Session = Depends(get_session)):
     try:
-        return warehouse_service.update_warehouse(session, warehouse_id, payload)
+        warehouse = warehouse_service.update_warehouse(session, warehouse_id, payload)
+        if current:
+            audit_log_service.record(session, action='UPDATE', resource_type='warehouse', resource_id=warehouse.id, detail=f'更新仓库 {warehouse.name}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
+        return warehouse
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message)
     except BadRequestError as exc:

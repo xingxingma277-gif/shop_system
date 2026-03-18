@@ -7,7 +7,7 @@ from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_session
 from app.schemas.inventory_check import InventoryCheckCreate, InventoryCheckRead
 from app.schemas.inventory_transfer import InventoryTransferCreate, InventoryTransferRead
-from app.services import auth_service, inventory_check_service, inventory_transfer_service, purchase_service
+from app.services import audit_log_service, auth_service, inventory_check_service, inventory_transfer_service, purchase_service
 
 router = APIRouter(prefix='/api/inventory', tags=['Inventory'])
 
@@ -39,17 +39,25 @@ def list_checks(
 
 
 @router.post('/checks', response_model=InventoryCheckRead)
-def create_check(payload: InventoryCheckCreate, _: dict | None = Depends(auth_service.require_permissions('inventory.manage')), session: Session = Depends(get_session)):
+def create_check(payload: InventoryCheckCreate, current: dict | None = Depends(auth_service.require_permissions('inventory.manage')), session: Session = Depends(get_session)):
     try:
-        return inventory_check_service.create_check(session, payload)
+        check = inventory_check_service.create_check(session, payload)
+        if current:
+            audit_log_service.record(session, action='CREATE', resource_type='inventory_check', resource_id=check.id, detail=f'创建盘点单 {check.check_no}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
+        return check
     except (BadRequestError, NotFoundError) as exc:
         raise HTTPException(status_code=400, detail=exc.message)
 
 
 @router.post('/checks/{check_id}/post', response_model=InventoryCheckRead)
-def post_check(check_id: int, _: dict | None = Depends(auth_service.require_permissions('inventory.manage')), session: Session = Depends(get_session)):
+def post_check(check_id: int, current: dict | None = Depends(auth_service.require_permissions('inventory.manage')), session: Session = Depends(get_session)):
     try:
-        return inventory_check_service.post_check(session, check_id)
+        check = inventory_check_service.post_check(session, check_id)
+        if current:
+            audit_log_service.record(session, action='POST', resource_type='inventory_check', resource_id=check.id, detail=f'过账盘点单 {check.check_no}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
+        return check
     except (BadRequestError, NotFoundError) as exc:
         raise HTTPException(status_code=400, detail=exc.message)
 
@@ -68,16 +76,24 @@ def list_transfers(
 
 
 @router.post('/transfers', response_model=InventoryTransferRead)
-def create_transfer(payload: InventoryTransferCreate, _: dict | None = Depends(auth_service.require_permissions('inventory.manage')), session: Session = Depends(get_session)):
+def create_transfer(payload: InventoryTransferCreate, current: dict | None = Depends(auth_service.require_permissions('inventory.manage')), session: Session = Depends(get_session)):
     try:
-        return inventory_transfer_service.create_transfer(session, payload)
+        transfer = inventory_transfer_service.create_transfer(session, payload)
+        if current:
+            audit_log_service.record(session, action='CREATE', resource_type='inventory_transfer', resource_id=transfer.id, detail=f'创建调拨单 {transfer.transfer_no}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
+        return transfer
     except (BadRequestError, NotFoundError) as exc:
         raise HTTPException(status_code=400, detail=exc.message)
 
 
 @router.post('/transfers/{transfer_id}/post', response_model=InventoryTransferRead)
-def post_transfer(transfer_id: int, _: dict | None = Depends(auth_service.require_permissions('inventory.manage')), session: Session = Depends(get_session)):
+def post_transfer(transfer_id: int, current: dict | None = Depends(auth_service.require_permissions('inventory.manage')), session: Session = Depends(get_session)):
     try:
-        return inventory_transfer_service.post_transfer(session, transfer_id)
+        transfer = inventory_transfer_service.post_transfer(session, transfer_id)
+        if current:
+            audit_log_service.record(session, action='POST', resource_type='inventory_transfer', resource_id=transfer.id, detail=f'过账调拨单 {transfer.transfer_no}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
+        return transfer
     except (BadRequestError, NotFoundError) as exc:
         raise HTTPException(status_code=400, detail=exc.message)
