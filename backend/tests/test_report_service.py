@@ -45,7 +45,8 @@ def test_dashboard_summary_includes_kpis_low_stock_and_audits():
         assert data['top_customers'][0]['customer_name'] == '客户A'
         assert data['top_receivable_customers'][0]['customer_name'] == '客户A'
         assert data['ar_aging']['0_30'] == 120
-        assert any(alert['code'] == 'LOW_STOCK' for alert in data['alerts'])
+        low_stock_alert = next(alert for alert in data['alerts'] if alert['code'] == 'LOW_STOCK')
+        assert low_stock_alert['action_path'] == '/inventory-ledger'
         assert len(data['low_stock_items']) == 1
         assert data['low_stock_items'][0]['name'] == '低库存商品'
         assert len(data['recent_audits']) == 1
@@ -117,3 +118,7 @@ def test_dashboard_summary_builds_actionable_alerts():
         assert 'LOW_STOCK' in codes
         assert 'AP_90_PLUS' in codes
         assert 'AR_90_PLUS' in codes
+        ap_alert = next(alert for alert in data['alerts'] if alert['code'] == 'AP_90_PLUS')
+        ar_alert = next(alert for alert in data['alerts'] if alert['code'] == 'AR_90_PLUS')
+        assert ap_alert['action_path'] == '/reports'
+        assert ar_alert['action_path'] == '/transactions'

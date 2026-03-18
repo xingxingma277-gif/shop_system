@@ -40,7 +40,14 @@
           :description="item.message"
           :type="item.level === 'danger' ? 'error' : 'warning'"
           :closable="false"
-        />
+        >
+          <template #default>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+              <span>{{ item.message }}</span>
+              <el-button v-if="item.action_path" type="primary" link @click="handleAlertAction(item)">{{ item.action_label || '查看' }}</el-button>
+            </div>
+          </template>
+        </el-alert>
       </div>
     </el-card>
 
@@ -230,6 +237,11 @@ async function loadDashboard() {
 
 function handlePresetChange() {
   loadDashboard()
+}
+
+function handleAlertAction(item) {
+  if (!item?.action_path) return
+  router.push(item.action_path)
 }
 
 onMounted(loadDashboard)

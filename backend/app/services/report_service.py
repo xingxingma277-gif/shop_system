@@ -242,6 +242,8 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
             'code': 'LOW_STOCK',
             'title': '低库存预警',
             'message': f'当前有 {len(low_stock_items)} 个商品触发低库存预警。',
+            'action_label': '查看库存台账',
+            'action_path': '/inventory-ledger',
         })
     if float(aging.get('90_plus', 0) or 0) > 0:
         alerts.append({
@@ -249,6 +251,8 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
             'code': 'AP_90_PLUS',
             'title': '应付账龄超 90 天',
             'message': f"90 天以上应付余额为 {aging.get('90_plus', 0)}。",
+            'action_label': '查看应付报表',
+            'action_path': '/reports',
         })
     if float(ar_aging.get('90_plus', 0) or 0) > 0:
         alerts.append({
@@ -256,6 +260,8 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
             'code': 'AR_90_PLUS',
             'title': '应收账龄超 90 天',
             'message': f"90 天以上应收余额为 {ar_aging.get('90_plus', 0)}。",
+            'action_label': '查看交易记录',
+            'action_path': '/transactions',
         })
     for idx, item in enumerate(funnel[1:], start=1):
         prev = funnel[idx - 1]
@@ -265,6 +271,8 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
                 'code': f"FUNNEL_{prev['order_stage']}_{item['order_stage']}",
                 'title': '订单流程转化偏低',
                 'message': f"{prev['label']}→{item['label']} 转化率仅 {item['conversion_rate']}%。",
+                'action_label': '查看订单走势',
+                'action_path': '/dashboard',
             })
 
     return {
