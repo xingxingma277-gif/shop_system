@@ -133,10 +133,7 @@ def adjust_stock(session: Session, *, product_id: int, change_qty: float, note: 
         raise NotFoundError("商品不存在")
     if abs(float(change_qty)) <= 1e-9:
         raise BadRequestError("调整数量不能为0")
-    p.stock_quantity = round(float(p.stock_quantity or 0) + float(change_qty), 2)
-    session.add(InventoryTxn(product_id=p.id, change_qty=float(change_qty), after_qty=float(p.stock_quantity),
-                             biz_type="manual_adjust", note=note))
-    session.add(p)
+    post_txn(session, product_id=p.id, warehouse_id=None, change_qty=float(change_qty), biz_type="manual_adjust", biz_id=p.id, note=note)
     session.commit()
     session.refresh(p)
     return p
