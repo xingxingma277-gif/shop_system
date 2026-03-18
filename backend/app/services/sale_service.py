@@ -6,12 +6,14 @@ from sqlmodel import Session, select
 
 from app.core.errors import BadRequestError, NotFoundError
 from app.core.time import utc_now
-from app.models import Customer, CustomerContact, InventoryTxn, Product, Sale, SaleItem, Payment, PaymentAllocation
+from app.models import Customer, CustomerContact, Product, Sale, SaleItem, Payment, PaymentAllocation
+from app.services.inventory_service import post_txn
 from app.schemas.sale import SaleItemRead, SaleRead, SaleSummary
 from app.services.pagination import paginate
 
 _ALLOWED_SETTLEMENT = {"UNPAID", "PARTIAL", "PAID"}
-_ALLOWED_METHODS = {"cash", "wechat", "alipay", "bank_transfer", "other", "现金", "微信", "支付宝", "转账", "其他"}
+_ALLOWED_METHODS = {"cash", "wechat", "alipay", "bank_transfer", "other"}
+_METHOD_ALIASES = {"现金": "cash", "微信": "wechat", "支付宝": "alipay", "转账": "bank_transfer", "bank": "bank_transfer", "transfer": "bank_transfer", "其他": "other"}
 
 
 def _compute_payment_status(total_amount: float, paid_amount: float) -> str:
@@ -24,6 +26,15 @@ def _compute_payment_status(total_amount: float, paid_amount: float) -> str:
 
 def _to_settlement_status(payment_status: str) -> str:
     return {"unpaid": "UNPAID", "partial": "PARTIAL", "paid": "PAID"}.get(payment_status, "UNPAID")
+
+
+def _normalize_method(method: str | None) -> str | None:
+    if not method:
+        return None
+    value = _METHOD_ALIASES.get(method, method)
+    if value not in _ALLOWED_METHODS:
+        raise BadRequestError("付款方式不合法")
+    return value
 
 
 def _generate_sale_no(session: Session, sale_date: datetime) -> str:
@@ -104,6 +115,10 @@ def create_sale(session: Session, data) -> SaleRead:
     if order_stage not in {"QUOTE", "SALE_CONFIRMED"}:
         raise BadRequestError("订单阶段不合法")
 
+    order_type = getattr(data, "order_type", None) or ("quote" if order_stage == "QUOTE" else "sale_direct")
+    if order_type not in {"quote", "sale_direct"}:
+        raise BadRequestError("order_type 不合法")
+
     inventory_effected = (order_stage == "SALE_CONFIRMED")
 
     for _ in range(3):
@@ -116,9 +131,15 @@ def create_sale(session: Session, data) -> SaleRead:
             contact_name_snapshot=buyer.name,
             project=(data.project or None),
             project_name=(data.project or None),
+            order_type=order_type,
             order_stage=order_stage,
             inventory_effected=inventory_effected,
-            delivery_status="NONE",
+            needs_delivery=bool(getattr(data, "needs_delivery", False)),
+            delivery_status="PENDING" if getattr(data, "needs_delivery", False) else "NONE",
+            receiver_name=getattr(data, "receiver_name", None),
+            receiver_phone=getattr(data, "receiver_phone", None),
+            receiver_address=getattr(data, "receiver_address", None),
+            delivery_note=getattr(data, "delivery_note", None),
             sale_date=sale_date,
             note=data.note,
             total_amount=0,
@@ -158,19 +179,16 @@ def create_sale(session: Session, data) -> SaleRead:
                     f"商品【{p.name}】当前库存 {before_qty}，不足 {qty}，不能开单。若需开单请选择生成报价单。")
 
             if inventory_effected:
-                p.stock_quantity = round(before_qty - qty, 2)
-                session.add(
-                    InventoryTxn(
-                        product_id=p.id,
-                        change_qty=round(-qty, 2),
-                        after_qty=float(p.stock_quantity),
-                        biz_type="sale",
-                        biz_id=sale.id,
-                        sale_id=sale.id,
-                        note=f"销售单{sale.sale_no}扣减",
-                    )
+                post_txn(
+                    session,
+                    product_id=p.id,
+                    warehouse_id=None,
+                    change_qty=round(-qty, 2),
+                    biz_type="sale",
+                    biz_id=sale.id,
+                    sale_id=sale.id,
+                    note=f"销售单{sale.sale_no}扣减",
                 )
-                session.add(p)
 
             si = SaleItem(
                 sale_id=sale.id,
@@ -184,9 +202,37 @@ def create_sale(session: Session, data) -> SaleRead:
             session.add(si)
 
         sale.total_amount = round(total, 2)
+        if order_stage == "SALE_CONFIRMED":
+            sale.sale_confirmed_at = utc_now()
         sale.ar_amount = round(total, 2)
         sale.payment_status = _compute_payment_status(sale.total_amount, sale.paid_amount)
         sale.settlement_status = _to_settlement_status(sale.payment_status)
+
+        settlement_status = getattr(data, "settlement_status", None)
+        if order_stage == "SALE_CONFIRMED" and settlement_status in _ALLOWED_SETTLEMENT:
+            method = _normalize_method(getattr(data, "payment_method", None))
+            paid_amount = float(getattr(data, "paid_amount", 0) or 0)
+            if settlement_status == "UNPAID":
+                sale.paid_amount = 0
+                sale.ar_amount = round(total, 2)
+                sale.payment_status = "unpaid"
+                sale.settlement_status = "UNPAID"
+                sale.payment_method = None
+                sale.payment_note = getattr(data, "payment_note", None)
+            else:
+                if not method:
+                    raise BadRequestError("请选择付款方式")
+                if settlement_status == "PAID":
+                    paid_amount = float(total)
+                if paid_amount < 0 or paid_amount > float(total):
+                    raise BadRequestError("已付金额不合法")
+                sale.paid_amount = round(paid_amount, 2)
+                sale.ar_amount = round(max(float(total) - sale.paid_amount, 0), 2)
+                sale.payment_status = _compute_payment_status(float(total), sale.paid_amount)
+                sale.settlement_status = settlement_status
+                sale.payment_method = method
+                sale.payment_note = getattr(data, "payment_note", None)
+
         session.add(sale)
         session.commit()
         return get_sale(session, sale.id)
@@ -194,7 +240,9 @@ def create_sale(session: Session, data) -> SaleRead:
     raise BadRequestError("生成单号失败，请重试")
 
 
-def convert_quote_to_sale(session: Session, sale_id: int):
+def convert_quote_to_sale(session: Session, sale_id: int, payload=None):
+    from app.services import payment_service
+
     sale = session.get(Sale, sale_id)
     if not sale:
         raise NotFoundError("单据不存在")
@@ -214,29 +262,77 @@ def convert_quote_to_sale(session: Session, sale_id: int):
         if before_qty < float(si.qty):
             raise BadRequestError(f"商品【{p.name}】当前库存 {before_qty}，不足以完成此销售")
 
-        p.stock_quantity = round(before_qty - float(si.qty), 2)
-        session.add(
-            InventoryTxn(
-                product_id=p.id,
-                change_qty=round(-float(si.qty), 2),
-                after_qty=float(p.stock_quantity),
-                biz_type="sale",
-                biz_id=sale.id,
-                sale_id=sale.id,
-                note=f"报价单{sale.sale_no}转销售扣减",
-            )
+        post_txn(
+            session,
+            product_id=p.id,
+            warehouse_id=None,
+            change_qty=round(-float(si.qty), 2),
+            biz_type="sale",
+            biz_id=sale.id,
+            sale_id=sale.id,
+            note=f"报价单{sale.sale_no}转销售扣减",
         )
-        session.add(p)
 
+    settlement_status = (getattr(payload, "settlement_status", None) or "UNPAID")
+    if settlement_status not in _ALLOWED_SETTLEMENT:
+        raise BadRequestError("付款状态不合法")
+
+    method = _normalize_method(getattr(payload, "payment_method", None))
+    paid_amount = float(getattr(payload, "paid_amount", 0) or 0)
+
+    sale.order_type = "quote"
     sale.order_stage = "SALE_CONFIRMED"
     sale.inventory_effected = True
     sale.quote_confirmed_at = utc_now()
+    sale.sale_confirmed_at = utc_now()
+
+    sale.needs_delivery = bool(getattr(payload, "needs_delivery", False))
+    sale.delivery_status = "PENDING" if sale.needs_delivery else "NONE"
+    sale.receiver_name = getattr(payload, "receiver_name", None)
+    sale.receiver_phone = getattr(payload, "receiver_phone", None)
+    sale.receiver_address = getattr(payload, "receiver_address", None)
+    sale.delivery_note = getattr(payload, "delivery_note", None)
+
+    if settlement_status == "UNPAID":
+        sale.paid_amount = 0
+        sale.ar_amount = round(float(sale.total_amount), 2)
+        sale.payment_status = "unpaid"
+        sale.settlement_status = "UNPAID"
+        sale.payment_method = None
+    else:
+        if not method:
+            raise BadRequestError("请选择付款方式")
+        if settlement_status == "PAID":
+            paid_amount = float(sale.total_amount)
+        if paid_amount < 0 or paid_amount > float(sale.total_amount):
+            raise BadRequestError("已付金额不合法")
+        sale.paid_amount = round(paid_amount, 2)
+        sale.ar_amount = round(max(float(sale.total_amount) - sale.paid_amount, 0), 2)
+        sale.payment_status = _compute_payment_status(float(sale.total_amount), sale.paid_amount)
+        sale.settlement_status = settlement_status
+        sale.payment_method = method
+
+    sale.payment_note = getattr(payload, "payment_note", None)
     session.add(sale)
+    session.flush()
+
+    if sale.paid_amount > 0:
+        payment_service.submit_sale_payment(
+            session,
+            sale_id=sale.id,
+            pay_type="paid_full" if sale.payment_status == "paid" else "partial",
+            method=method,
+            amount=sale.paid_amount if sale.payment_status != "paid" else None,
+            note=sale.payment_note,
+            scene="ORDER_CHECKOUT",
+        )
+        return get_sale(session, sale.id)
+
     session.commit()
     return get_sale(session, sale.id)
 
 
-def generate_delivery(session: Session, sale_id: int):
+def generate_delivery(session: Session, sale_id: int, payload=None):
     sale = session.get(Sale, sale_id)
     if not sale:
         raise NotFoundError("单据不存在")
@@ -245,8 +341,13 @@ def generate_delivery(session: Session, sale_id: int):
     if sale.biz_status == "VOIDED":
         raise BadRequestError("单据已作废，无法生成")
 
+    sale.needs_delivery = True
     sale.order_stage = "DELIVERY_CREATED"
     sale.delivery_status = "GENERATED"
+    sale.receiver_name = getattr(payload, "receiver_name", None) or sale.receiver_name
+    sale.receiver_phone = getattr(payload, "receiver_phone", None) or sale.receiver_phone
+    sale.receiver_address = getattr(payload, "receiver_address", None) or sale.receiver_address
+    sale.delivery_note = getattr(payload, "delivery_note", None) or sale.delivery_note
     if not sale.delivery_created_at:
         sale.delivery_created_at = utc_now()
 
@@ -280,10 +381,12 @@ def _sale_gross_profit(session: Session, sale_id: int) -> float:
     return round(gp, 2)
 
 
-def list_sales(session: Session, customer_id: int | None, page: int, page_size: int):
+def list_sales(session: Session, customer_id: int | None, order_stage: str | None, page: int, page_size: int):
     stmt = select(Sale, Customer).join(Customer, Customer.id == Sale.customer_id)
     if customer_id:
         stmt = stmt.where(Sale.customer_id == customer_id)
+    if order_stage:
+        stmt = stmt.where(Sale.order_stage == order_stage)
     stmt = stmt.order_by(Sale.sale_date.desc(), Sale.id.desc())
 
     rows, total, page, page_size = paginate(session, stmt, page, page_size)
@@ -295,9 +398,15 @@ def list_sales(session: Session, customer_id: int | None, page: int, page_size: 
             customer_name=c.name,
             buyer_name=s.contact_name_snapshot,
             project=s.project,
+            order_type=s.order_type,
             order_stage=s.order_stage,
             inventory_effected=s.inventory_effected,
+            needs_delivery=s.needs_delivery,
             delivery_status=s.delivery_status,
+            receiver_name=s.receiver_name,
+            receiver_phone=s.receiver_phone,
+            receiver_address=s.receiver_address,
+            delivery_note=s.delivery_note,
             sale_date=s.sale_date,
             note=s.note,
             total_amount=s.total_amount,
@@ -352,9 +461,15 @@ def get_sale(session: Session, sale_id: int) -> SaleRead:
         buyer_id=sale.buyer_id,
         buyer_name=sale.contact_name_snapshot,
         project=sale.project,
+        order_type=sale.order_type,
         order_stage=sale.order_stage,
         inventory_effected=sale.inventory_effected,
+        needs_delivery=sale.needs_delivery,
         delivery_status=sale.delivery_status,
+        receiver_name=sale.receiver_name,
+        receiver_phone=sale.receiver_phone,
+        receiver_address=sale.receiver_address,
+        delivery_note=sale.delivery_note,
         sale_date=sale.sale_date,
         note=sale.note,
         total_amount=sale.total_amount,
@@ -364,6 +479,10 @@ def get_sale(session: Session, sale_id: int) -> SaleRead:
         settlement_status=sale.settlement_status,
         payment_method=sale.payment_method,
         payment_note=sale.payment_note,
+        quote_confirmed_at=sale.quote_confirmed_at,
+        sale_confirmed_at=sale.sale_confirmed_at,
+        delivery_created_at=sale.delivery_created_at,
+        delivered_at=sale.delivered_at,
         gross_profit=_sale_gross_profit(session, sale.id),
         biz_status=sale.biz_status,
         created_at=sale.created_at,
