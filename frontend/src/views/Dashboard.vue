@@ -241,7 +241,7 @@ function handlePresetChange() {
 
 function handleAlertAction(item) {
   if (!item?.action_path) return
-  router.push(item.action_path)
+  router.push(item.action_query ? { path: item.action_path, query: item.action_query } : item.action_path)
 }
 
 onMounted(loadDashboard)

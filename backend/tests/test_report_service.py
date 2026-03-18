@@ -121,4 +121,6 @@ def test_dashboard_summary_builds_actionable_alerts():
         ap_alert = next(alert for alert in data['alerts'] if alert['code'] == 'AP_90_PLUS')
         ar_alert = next(alert for alert in data['alerts'] if alert['code'] == 'AR_90_PLUS')
         assert ap_alert['action_path'] == '/reports'
+        assert ap_alert['action_query']['tab'] == 'aging'
         assert ar_alert['action_path'] == '/transactions'
+        assert ar_alert['action_query']['status'] == 'unpaid'

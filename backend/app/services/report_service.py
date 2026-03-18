@@ -251,8 +251,9 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
             'code': 'AP_90_PLUS',
             'title': '应付账龄超 90 天',
             'message': f"90 天以上应付余额为 {aging.get('90_plus', 0)}。",
-            'action_label': '查看应付报表',
+            'action_label': '查看应付账龄',
             'action_path': '/reports',
+            'action_query': {'tab': 'aging'},
         })
     if float(ar_aging.get('90_plus', 0) or 0) > 0:
         alerts.append({
@@ -260,8 +261,9 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
             'code': 'AR_90_PLUS',
             'title': '应收账龄超 90 天',
             'message': f"90 天以上应收余额为 {ar_aging.get('90_plus', 0)}。",
-            'action_label': '查看交易记录',
+            'action_label': '查看未收订单',
             'action_path': '/transactions',
+            'action_query': {'tab': 'sales', 'status': 'unpaid'},
         })
     for idx, item in enumerate(funnel[1:], start=1):
         prev = funnel[idx - 1]

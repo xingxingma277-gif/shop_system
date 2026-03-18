@@ -58,11 +58,13 @@
 
 <script setup>
 import dayjs from 'dayjs'
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { getApAging, getApSummary, getInventorySummary } from '../api/reports'
 import { listSuppliers } from '../api/suppliers'
 import { listWarehouses } from '../api/warehouses'
 
+const route = useRoute()
 const tab = ref('ap')
 
 const suppliers = ref([])
@@ -109,7 +111,15 @@ async function loadInventory() {
   Object.assign(invSummary, data.summary || {})
 }
 
+function applyRouteQuery() {
+  const nextTab = typeof route.query.tab === 'string' ? route.query.tab : 'ap'
+  if (['ap', 'aging', 'inventory'].includes(nextTab)) tab.value = nextTab
+}
+
+watch(() => route.query.tab, applyRouteQuery)
+
 onMounted(async () => {
+  applyRouteQuery()
   suppliers.value = await listSuppliers({})
   warehouses.value = await listWarehouses({})
   await loadAp()
