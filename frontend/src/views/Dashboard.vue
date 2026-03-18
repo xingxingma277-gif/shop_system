@@ -129,6 +129,32 @@
       </el-col>
     </el-row>
 
+    <el-row :gutter="12">
+      <el-col :xs="24" :lg="12">
+        <el-card shadow="never">
+          <template #header><b>应收账龄</b></template>
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="0-30 天">{{ receivableAging['0_30'] || 0 }}</el-descriptions-item>
+            <el-descriptions-item label="31-60 天">{{ receivableAging['31_60'] || 0 }}</el-descriptions-item>
+            <el-descriptions-item label="61-90 天">{{ receivableAging['61_90'] || 0 }}</el-descriptions-item>
+            <el-descriptions-item label="90+ 天">{{ receivableAging['90_plus'] || 0 }}</el-descriptions-item>
+          </el-descriptions>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :lg="12">
+        <el-card shadow="never">
+          <template #header><b>应收 Top 客户</b></template>
+          <el-table :data="topReceivableCustomers" border>
+            <el-table-column prop="customer_name" label="客户" min-width="180" />
+            <el-table-column prop="sale_count" label="订单数" width="100" />
+            <el-table-column prop="ar_amount" label="应收" width="110" />
+            <el-table-column prop="paid_amount" label="已收" width="110" />
+            <el-table-column prop="total_amount" label="销售额" width="120" />
+          </el-table>
+        </el-card>
+      </el-col>
+    </el-row>
+
     <el-card shadow="never">
       <template #header><b>最近操作</b></template>
       <el-table :data="recentAudits" border>
@@ -158,6 +184,8 @@ const orderFunnel = ref([])
 const stageBreakdown = ref([])
 const topApSuppliers = ref([])
 const topCustomers = ref([])
+const receivableAging = reactive({ '0_30': 0, '31_60': 0, '61_90': 0, '90_plus': 0 })
+const topReceivableCustomers = ref([])
 const recentAudits = ref([])
 
 function buildRangeParams() {
@@ -178,6 +206,8 @@ async function loadDashboard() {
   stageBreakdown.value = data.order_stage_breakdown || []
   topApSuppliers.value = data.top_ap_suppliers || []
   topCustomers.value = data.top_customers || []
+  Object.assign(receivableAging, data.ar_aging || {})
+  topReceivableCustomers.value = data.top_receivable_customers || []
   recentAudits.value = data.recent_audits || []
 }
 

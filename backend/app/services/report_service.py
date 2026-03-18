@@ -177,6 +177,8 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
         customer_stmt = customer_stmt.where(Sale.sale_date <= end_date)
     customer_rows = session.exec(customer_stmt).all()
     customer_rank_map = {}
+    ar_aging = {'0_30': 0.0, '31_60': 0.0, '61_90': 0.0, '90_plus': 0.0}
+    aging_cutoff = end_date or start_date or datetime.utcnow()
     for sale, customer in customer_rows:
         item = customer_rank_map.setdefault(customer.id, {
             'customer_id': customer.id,
@@ -190,7 +192,12 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
         item['total_amount'] = round(item['total_amount'] + float(sale.total_amount or 0), 2)
         item['paid_amount'] = round(item['paid_amount'] + float(sale.paid_amount or 0), 2)
         item['ar_amount'] = round(item['ar_amount'] + float(sale.ar_amount or 0), 2)
+        if float(sale.ar_amount or 0) > 0:
+            age_days = max((aging_cutoff.date() - sale.sale_date.date()).days, 0)
+            bucket = '0_30' if age_days <= 30 else '31_60' if age_days <= 60 else '61_90' if age_days <= 90 else '90_plus'
+            ar_aging[bucket] = round(ar_aging[bucket] + float(sale.ar_amount or 0), 2)
     top_customers = sorted(customer_rank_map.values(), key=lambda row: (-row['total_amount'], row['customer_id']))[:5]
+    top_receivable_customers = sorted((row for row in customer_rank_map.values() if row['ar_amount'] > 0), key=lambda row: (-row['ar_amount'], row['customer_id']))[:5]
 
     funnel = []
     previous_count = None
@@ -243,6 +250,8 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
         'order_funnel': funnel,
         'top_ap_suppliers': top_ap_suppliers,
         'top_customers': top_customers,
+        'ar_aging': ar_aging,
+        'top_receivable_customers': top_receivable_customers,
         'low_stock_items': [
             {
                 'id': item.id,
