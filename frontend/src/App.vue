@@ -51,6 +51,15 @@
           <span>经营报表</span>
         </el-menu-item>
 
+        <el-sub-menu index="admin-group">
+          <template #title>
+            <el-icon><Setting /></el-icon>
+            <span>权限与审计</span>
+          </template>
+          <el-menu-item index="/admin/users">用户与角色</el-menu-item>
+          <el-menu-item index="/admin/audit-logs">操作审计</el-menu-item>
+        </el-sub-menu>
+
         <el-menu-item index="/transactions">
           <el-icon><DataAnalysis /></el-icon>
           <span>交易记录</span>
@@ -73,7 +82,7 @@
 
 <script setup>
 import { useRoute } from 'vue-router'
-import { Box, CreditCard, DataAnalysis, DocumentAdd, Goods, OfficeBuilding, PieChart, User } from '@element-plus/icons-vue'
+import { Box, CreditCard, DataAnalysis, DocumentAdd, Goods, OfficeBuilding, PieChart, Setting, User } from '@element-plus/icons-vue'
 
 const route = useRoute()
 </script>

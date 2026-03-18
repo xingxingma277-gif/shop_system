@@ -17,6 +17,8 @@ import Warehouses from '../views/Warehouses.vue'
 import Suppliers from '../views/Suppliers.vue'
 import Reports from '../views/Reports.vue'
 import InventoryAdjustments from '../views/InventoryAdjustments.vue'
+import AdminUsers from '../views/AdminUsers.vue'
+import AuditLogs from '../views/AuditLogs.vue'
 
 const routes = [
   { path: '/', redirect: '/new-sale' },
@@ -35,6 +37,8 @@ const routes = [
   { path: '/inventory-adjustments', component: InventoryAdjustments, meta: { title: '库存调整' } },
   { path: '/accounts-payable', component: AccountsPayable, meta: { title: '应付管理' } },
   { path: '/reports', component: Reports, meta: { title: '经营报表' } },
+  { path: '/admin/users', component: AdminUsers, meta: { title: '用户与角色' } },
+  { path: '/admin/audit-logs', component: AuditLogs, meta: { title: '操作审计' } },
   { path: '/sales/:id', component: SaleDetail, meta: { title: '订单详情' } },
   { path: '/sales/:id/payment', component: SaleCheckout, meta: { title: '收款' } },
   { path: '/sales/:id/checkout', redirect: (to) => `/sales/${to.params.id}/payment` },
