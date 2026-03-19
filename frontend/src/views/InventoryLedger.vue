@@ -25,7 +25,11 @@
     <el-table :data="rows" border>
       <el-table-column prop="created_at" label="时间" min-width="170" />
       <el-table-column prop="warehouse_name" label="仓库" width="120" />
-      <el-table-column prop="product_name" label="商品" min-width="160" />
+      <el-table-column prop="product_name" label="商品" min-width="160">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="goProduct(row)">{{ row.product_name }}</el-button>
+        </template>
+      </el-table-column>
       <el-table-column prop="change_qty" label="变动" width="100" />
       <el-table-column prop="after_qty" label="结存" width="100" />
       <el-table-column prop="biz_type" label="业务类型" width="140" />
@@ -79,6 +83,11 @@ function backToDashboard() {
   const query = {}
   if (typeof route.query.preset === 'string') query.preset = route.query.preset
   router.push({ path: '/dashboard', query })
+}
+
+function goProduct(row) {
+  if (!row?.product_name) return
+  router.push({ path: '/products', query: { q: row.product_name } })
 }
 
 async function load() {

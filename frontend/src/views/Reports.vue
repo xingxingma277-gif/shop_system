@@ -41,7 +41,11 @@
         </div>
         <el-alert :title="`0-30天：${agingSummary['0_30'] || 0}，31-60天：${agingSummary['31_60'] || 0}，61-90天：${agingSummary['61_90'] || 0}，90+天：${agingSummary['90_plus'] || 0}`" type="warning" :closable="false" style="margin-bottom:8px;" />
         <el-table :data="agingRows" border>
-          <el-table-column prop="purchase_no" label="采购单号" min-width="140" />
+          <el-table-column prop="purchase_no" label="采购单号" min-width="140">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="goPurchase(row.purchase_id)">{{ row.purchase_no }}</el-button>
+            </template>
+          </el-table-column>
           <el-table-column prop="supplier_name" label="供应商" min-width="140" />
           <el-table-column prop="age_days" label="账龄(天)" width="100" />
           <el-table-column prop="bucket" label="账龄区间" width="120" />
@@ -148,6 +152,11 @@ function backToDashboard() {
   const query = {}
   if (typeof route.query.preset === 'string') query.preset = route.query.preset
   router.push({ path: '/dashboard', query })
+}
+
+function goPurchase(id) {
+  if (!id) return
+  router.push(`/purchases/${id}`)
 }
 
 watch(() => route.query, applyRouteQuery)
