@@ -14,11 +14,21 @@ class SaleItemCreate(SQLModel):
 class SaleCreate(SQLModel):
     sale_no: Optional[str] = None
     customer_id: int
+    order_type: Optional[str] = Field(default="sale_direct")
     buyer_id: Optional[int] = None
     project: Optional[str] = None
     sale_date: Optional[datetime] = None
     note: Optional[str] = Field(default=None, max_length=500)
     order_stage: Optional[str] = Field(default="SALE_CONFIRMED")
+    needs_delivery: Optional[bool] = False
+    receiver_name: Optional[str] = None
+    receiver_phone: Optional[str] = None
+    receiver_address: Optional[str] = None
+    delivery_note: Optional[str] = None
+    settlement_status: Optional[str] = None
+    payment_method: Optional[str] = None
+    paid_amount: Optional[float] = None
+    payment_note: Optional[str] = None
     items: List[SaleItemCreate]
 
 
@@ -28,6 +38,26 @@ class SaleSettlementUpdate(SQLModel):
     payment_method: Optional[str] = None
     payment_note: Optional[str] = None
 
+
+
+
+class QuoteConvertPayload(SQLModel):
+    settlement_status: str = Field(default="UNPAID")
+    payment_method: Optional[str] = None
+    paid_amount: Optional[float] = None
+    payment_note: Optional[str] = None
+    needs_delivery: bool = False
+    receiver_name: Optional[str] = None
+    receiver_phone: Optional[str] = None
+    receiver_address: Optional[str] = None
+    delivery_note: Optional[str] = None
+
+
+class DeliveryCreatePayload(SQLModel):
+    receiver_name: Optional[str] = None
+    receiver_phone: Optional[str] = None
+    receiver_address: Optional[str] = None
+    delivery_note: Optional[str] = None
 
 class SaleItemRead(SQLModel):
     id: int
@@ -60,9 +90,15 @@ class SaleRead(SQLModel):
     buyer_name: Optional[str] = None
     project: Optional[str] = None
 
+    order_type: str
     order_stage: str
     inventory_effected: bool
+    needs_delivery: bool
     delivery_status: str
+    receiver_name: Optional[str] = None
+    receiver_phone: Optional[str] = None
+    receiver_address: Optional[str] = None
+    delivery_note: Optional[str] = None
 
     sale_date: datetime
     note: Optional[str] = None
@@ -73,6 +109,10 @@ class SaleRead(SQLModel):
     settlement_status: str
     payment_method: Optional[str] = None
     payment_note: Optional[str] = None
+    quote_confirmed_at: Optional[datetime] = None
+    sale_confirmed_at: Optional[datetime] = None
+    delivery_created_at: Optional[datetime] = None
+    delivered_at: Optional[datetime] = None
     gross_profit: float = 0
     biz_status: str = "NORMAL"
     created_at: datetime
@@ -87,9 +127,15 @@ class SaleSummary(SQLModel):
     buyer_name: Optional[str] = None
     project: Optional[str] = None
 
+    order_type: str
     order_stage: str
     inventory_effected: bool
+    needs_delivery: bool
     delivery_status: str
+    receiver_name: Optional[str] = None
+    receiver_phone: Optional[str] = None
+    receiver_address: Optional[str] = None
+    delivery_note: Optional[str] = None
 
     sale_date: datetime
     note: Optional[str] = None

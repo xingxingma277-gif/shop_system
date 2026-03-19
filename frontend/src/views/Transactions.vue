@@ -1,6 +1,19 @@
 <template>
   <el-card>
-    <template #header><div style="font-weight:700">交易记录</div></template>
+    <template #header>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div style="font-weight:700">交易记录</div>
+        <el-button v-if="showDashboardBack" link type="primary" @click="backToDashboard">返回看板</el-button>
+      </div>
+    </template>
+
+    <el-alert
+      v-if="contextMessage"
+      :title="contextMessage"
+      type="info"
+      :closable="false"
+      style="margin-bottom:12px;"
+    />
 
     <el-tabs v-model="tab" @tab-change="onTabChange">
       <el-tab-pane label="销售记录" name="sales">
@@ -38,7 +51,6 @@
         </el-table>
       </el-tab-pane>
 
-      <!-- 明确为还款记录 -->
       <el-tab-pane label="后续还款记录" name="payments">
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
           <el-date-picker v-model="payFilters.dateRange" type="daterange" range-separator="~" start-placeholder="开始" end-placeholder="结束" />
@@ -70,13 +82,14 @@
 
 <script setup>
 import dayjs from 'dayjs'
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { listTransactionPayments, listTransactionSales } from '../api/transactions'
 import { formatDateTime } from '../utils/format'
 import { useDictsStore } from '../stores/dicts'
 
 const router = useRouter()
+const route = useRoute()
 const dicts = useDictsStore()
 const paymentMethods = computed(() => dicts.paymentMethods)
 
@@ -100,9 +113,44 @@ const payFilters = reactive({
   method: '',
 })
 
+const statusTextMap = {
+  unpaid: '未结清',
+  partial: '部分结清',
+  paid: '已结清',
+}
+
+const showDashboardBack = computed(() => route.query.source === 'dashboard')
+const contextMessage = computed(() => {
+  if (route.query.source !== 'dashboard') return ''
+  if (route.query.context === 'ar_aging' || route.query.status === 'unpaid') {
+    return `当前来自看板预警，已自动切换到销售记录，并按“${statusTextMap[salesFilters.status] || '未结清'}”筛选。`
+  }
+  if (tab.value === 'payments') {
+    return '当前来自看板经营上下文，已自动切换到后续还款记录。'
+  }
+  return '当前来自看板经营上下文。'
+})
+
 function paymentMethodText(v) {
   const f = dicts.paymentMethods.find(m => m.value === v)
   return f ? f.label : (v || '-')
+}
+
+function applyRouteQuery() {
+  const nextTab = typeof route.query.tab === 'string' && ['sales', 'payments'].includes(route.query.tab)
+    ? route.query.tab
+    : 'sales'
+  tab.value = nextTab
+  salesFilters.status = typeof route.query.status === 'string' ? route.query.status : ''
+  if (typeof route.query.start_date === 'string' && typeof route.query.end_date === 'string') {
+    salesFilters.dateRange = [dayjs(route.query.start_date).toDate(), dayjs(route.query.end_date).toDate()]
+    payFilters.dateRange = [dayjs(route.query.start_date).toDate(), dayjs(route.query.end_date).toDate()]
+  }
+}
+
+function refreshByTab() {
+  page.value = 1
+  return tab.value === 'sales' ? loadSales() : loadPayments()
 }
 
 function onPage(p) {
@@ -111,8 +159,13 @@ function onPage(p) {
 }
 
 function onTabChange() {
-  page.value = 1
-  tab.value === 'sales' ? loadSales() : loadPayments()
+  refreshByTab()
+}
+
+function backToDashboard() {
+  const query = {}
+  if (typeof route.query.preset === 'string') query.preset = route.query.preset
+  router.push({ path: '/dashboard', query })
 }
 
 async function loadSales() {
@@ -146,5 +199,13 @@ const foldSaleNos = (list) => !list?.length ? '-' : (list.length <= 2 ? list.joi
 const goSale = (id) => router.push(`/sales/${id}`)
 const goCustomer = (id) => router.push(`/customers/${id}`)
 
-onMounted(loadSales)
+watch(() => route.query, async () => {
+  applyRouteQuery()
+  await refreshByTab()
+})
+
+onMounted(async () => {
+  applyRouteQuery()
+  await refreshByTab()
+})
 </script>
