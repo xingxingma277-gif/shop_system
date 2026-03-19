@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session
 
 from app.db.session import get_session
-from app.services import transaction_service
+from app.services import auth_service, transaction_service
 
 router = APIRouter(prefix="/api/transactions", tags=["Transactions"])
 
@@ -18,6 +18,7 @@ def list_sales_transactions(
     q: str | None = Query(None),
     status: str | None = Query(None),
     sort_by: str = Query("date_desc"),
+    _: dict | None = Depends(auth_service.require_permissions('transaction.view')),
     session: Session = Depends(get_session),
 ):
     items, total = transaction_service.list_sales_transactions(
@@ -40,6 +41,7 @@ def list_payments_transactions(
     end_date: str | None = Query(None),
     q: str | None = Query(None),
     method: str | None = Query(None),
+    _: dict | None = Depends(auth_service.require_permissions('transaction.view')),
     session: Session = Depends(get_session),
 ):
     items, total = transaction_service.list_payment_transactions(

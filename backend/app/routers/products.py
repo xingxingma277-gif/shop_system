@@ -5,7 +5,7 @@ from sqlmodel import Session
 from app.core.errors import BadRequestError, NotFoundError
 from app.db.session import get_session
 from app.schemas.product import ProductCreate, ProductPage, ProductRead, ProductUpdate
-from app.services import product_service
+from app.services import auth_service, product_service
 
 router = APIRouter(prefix="/api/products", tags=["Products"])
 
@@ -21,6 +21,7 @@ def get_products(
     page_size: int = Query(20, ge=1, le=100),
     q: str | None = Query(None, description="可选：商品名或SKU模糊搜索"),
     active_only: bool = Query(True, description="默认只返回启用商品"),
+    _: dict | None = Depends(auth_service.require_permissions('product.view')),
     session: Session = Depends(get_session),
 ):
     rows, total, page, page_size = product_service.list_products(session, page, page_size, q, active_only)
@@ -30,6 +31,7 @@ def get_products(
 @router.post("", response_model=ProductRead)
 def create_product(
     payload: ProductCreate,
+    _: dict | None = Depends(auth_service.require_permissions('product.manage')),
     session: Session = Depends(get_session),
 ):
     return product_service.create_product(session, payload)
@@ -39,6 +41,7 @@ def create_product(
 def patch_product(
     product_id: int,
     payload: ProductUpdate,
+    _: dict | None = Depends(auth_service.require_permissions('product.manage')),
     session: Session = Depends(get_session),
 ):
     try:
@@ -51,6 +54,7 @@ def patch_product(
 def put_product(
     product_id: int,
     payload: ProductUpdate,
+    _: dict | None = Depends(auth_service.require_permissions('product.manage')),
     session: Session = Depends(get_session),
 ):
     try:
@@ -62,6 +66,7 @@ def put_product(
 @router.delete("/{product_id}", status_code=204)
 def delete_product(
     product_id: int,
+    _: dict | None = Depends(auth_service.require_permissions('product.manage')),
     session: Session = Depends(get_session),
 ):
     try:
@@ -78,6 +83,7 @@ def delete_product(
 @router.post("/{product_id}/toggle_active", response_model=ProductRead)
 def toggle_active(
     product_id: int,
+    _: dict | None = Depends(auth_service.require_permissions('product.manage')),
     session: Session = Depends(get_session),
 ):
     try:
@@ -87,7 +93,12 @@ def toggle_active(
 
 
 @router.post("/{product_id}/stock/adjust", response_model=ProductRead)
-def adjust_product_stock(product_id: int, payload: StockAdjustPayload, session: Session = Depends(get_session)):
+def adjust_product_stock(
+    product_id: int,
+    payload: StockAdjustPayload,
+    _: dict | None = Depends(auth_service.require_permissions('product.manage')),
+    session: Session = Depends(get_session),
+):
     try:
         return product_service.adjust_stock(session, product_id=product_id, change_qty=payload.change_qty, note=payload.note)
     except NotFoundError as exc:
