@@ -7,6 +7,7 @@
           <el-tag :type="stageTag(sale.order_stage)">{{ stageText(sale.order_stage) }}</el-tag>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
+          <el-button v-if="backLabel" @click="backToOrigin">{{ backLabel }}</el-button>
           <el-button v-if="mainAction" type="primary" @click="mainAction.handler">{{ mainAction.label }}</el-button>
           <el-dropdown @command="onSecondaryCommand">
             <el-button>更多操作<el-icon class="el-icon--right"><arrow-down /></el-icon></el-button>
@@ -140,6 +141,8 @@ const stageText = (v) => ({ QUOTE: '报价中', SALE_CONFIRMED: '销售已确认
 const stageTag = (v) => ({ QUOTE: 'info', SALE_CONFIRMED: 'primary', DELIVERY_PENDING: 'warning', DELIVERY_CREATED: 'success', DELIVERED: 'success' }[v] || 'info')
 const deliveryText = (v) => ({ NONE: '无需送货', PENDING: '待生成送货单', GENERATED: '已生成送货单', SHIPPED: '已发货', SIGNED: '已签收' }[v] || v)
 
+const backLabel = computed(() => route.query.return_to === 'transactions' ? '返回交易记录' : '')
+
 const deliveryReceiverText = computed(() => {
   if (!sale.value?.needs_delivery) return '无需送货'
   const s = sale.value
@@ -154,6 +157,20 @@ const mainAction = computed(() => {
   if (sale.value.order_stage === 'DELIVERY_CREATED') return { label: '查看/导出送货单', handler: () => downloadDoc('delivery') }
   return null
 })
+
+function backToOrigin() {
+  if (route.query.return_to === 'transactions') {
+    const query = {}
+    if (typeof route.query.tab === 'string') query.tab = route.query.tab
+    if (typeof route.query.status === 'string') query.status = route.query.status
+    if (typeof route.query.preset === 'string') query.preset = route.query.preset
+    if (typeof route.query.start_date === 'string') query.start_date = route.query.start_date
+    if (typeof route.query.end_date === 'string') query.end_date = route.query.end_date
+    if (typeof route.query.source === 'string') query.source = route.query.source
+    if (typeof route.query.context === 'string') query.context = route.query.context
+    router.push({ path: '/transactions', query })
+  }
+}
 
 function paymentMethodText(v) {
   const f = dicts.paymentMethods.find(m => m.value === v)

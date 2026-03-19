@@ -3,7 +3,7 @@
     <template #header>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <b>采购单详情</b>
-        <el-button @click="router.push('/purchases')">返回采购列表</el-button>
+        <el-button @click="backToOrigin">{{ backLabel }}</el-button>
       </div>
     </template>
 
@@ -28,13 +28,30 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getPurchase } from '../api/purchases'
 
 const route = useRoute()
 const router = useRouter()
 const detail = ref(null)
+
+const backLabel = computed(() => route.query.return_to === 'reports' ? '返回报表' : '返回采购列表')
+
+function backToOrigin() {
+  if (route.query.return_to === 'reports') {
+    const query = {}
+    if (typeof route.query.tab === 'string') query.tab = route.query.tab
+    if (typeof route.query.preset === 'string') query.preset = route.query.preset
+    if (typeof route.query.start_date === 'string') query.start_date = route.query.start_date
+    if (typeof route.query.end_date === 'string') query.end_date = route.query.end_date
+    if (typeof route.query.source === 'string') query.source = route.query.source
+    if (typeof route.query.context === 'string') query.context = route.query.context
+    router.push({ path: '/reports', query })
+    return
+  }
+  router.push('/purchases')
+}
 
 onMounted(async () => {
   detail.value = await getPurchase(route.params.id)

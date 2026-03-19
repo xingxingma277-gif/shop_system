@@ -156,7 +156,14 @@ function backToDashboard() {
 
 function goPurchase(id) {
   if (!id) return
-  router.push(`/purchases/${id}`)
+  const query = { return_to: 'reports' }
+  if (typeof route.query.tab === 'string') query.tab = route.query.tab
+  if (typeof route.query.preset === 'string') query.preset = route.query.preset
+  if (typeof route.query.start_date === 'string') query.start_date = route.query.start_date
+  if (typeof route.query.end_date === 'string') query.end_date = route.query.end_date
+  if (typeof route.query.source === 'string') query.source = route.query.source
+  if (typeof route.query.context === 'string') query.context = route.query.context
+  router.push({ path: `/purchases/${id}`, query })
 }
 
 watch(() => route.query, applyRouteQuery)

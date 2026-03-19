@@ -196,7 +196,17 @@ async function loadPayments() {
 }
 
 const foldSaleNos = (list) => !list?.length ? '-' : (list.length <= 2 ? list.join('、') : `${list.slice(0, 2).join('、')} +${list.length - 2}`)
-const goSale = (id) => router.push(`/sales/${id}`)
+const goSale = (id) => {
+  const query = { return_to: 'transactions' }
+  if (typeof route.query.tab === 'string') query.tab = route.query.tab
+  if (typeof route.query.status === 'string') query.status = route.query.status
+  if (typeof route.query.preset === 'string') query.preset = route.query.preset
+  if (typeof route.query.start_date === 'string') query.start_date = route.query.start_date
+  if (typeof route.query.end_date === 'string') query.end_date = route.query.end_date
+  if (typeof route.query.source === 'string') query.source = route.query.source
+  if (typeof route.query.context === 'string') query.context = route.query.context
+  router.push({ path: `/sales/${id}`, query })
+}
 const goCustomer = (id) => router.push(`/customers/${id}`)
 
 watch(() => route.query, async () => {
