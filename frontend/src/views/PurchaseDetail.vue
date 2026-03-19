@@ -1,0 +1,59 @@
+<template>
+  <el-card>
+    <template #header>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <b>采购单详情</b>
+        <el-button @click="backToOrigin">{{ backLabel }}</el-button>
+      </div>
+    </template>
+
+    <el-descriptions v-if="detail" :column="2" border>
+      <el-descriptions-item label="采购单号">{{ detail.purchase_no }}</el-descriptions-item>
+      <el-descriptions-item label="状态">{{ detail.status }}</el-descriptions-item>
+      <el-descriptions-item label="供应商">{{ detail.supplier_name }}</el-descriptions-item>
+      <el-descriptions-item label="仓库">{{ detail.warehouse_name }}</el-descriptions-item>
+      <el-descriptions-item label="总金额">{{ detail.total_amount }}</el-descriptions-item>
+      <el-descriptions-item label="应付">{{ detail.ap_amount }}</el-descriptions-item>
+      <el-descriptions-item label="备注" :span="2">{{ detail.note || '-' }}</el-descriptions-item>
+    </el-descriptions>
+
+    <el-table v-if="detail" :data="detail.items || []" border style="margin-top:12px;">
+      <el-table-column prop="product_name" label="商品" min-width="180" />
+      <el-table-column prop="qty" label="采购数量" width="110" />
+      <el-table-column prop="received_qty" label="已入库" width="110" />
+      <el-table-column prop="unit_cost" label="单价" width="100" />
+      <el-table-column prop="line_total" label="金额" width="100" />
+    </el-table>
+  </el-card>
+</template>
+
+<script setup>
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { getPurchase } from '../api/purchases'
+
+const route = useRoute()
+const router = useRouter()
+const detail = ref(null)
+
+const backLabel = computed(() => route.query.return_to === 'reports' ? '返回报表' : '返回采购列表')
+
+function backToOrigin() {
+  if (route.query.return_to === 'reports') {
+    const query = {}
+    if (typeof route.query.tab === 'string') query.tab = route.query.tab
+    if (typeof route.query.preset === 'string') query.preset = route.query.preset
+    if (typeof route.query.start_date === 'string') query.start_date = route.query.start_date
+    if (typeof route.query.end_date === 'string') query.end_date = route.query.end_date
+    if (typeof route.query.source === 'string') query.source = route.query.source
+    if (typeof route.query.context === 'string') query.context = route.query.context
+    router.push({ path: '/reports', query })
+    return
+  }
+  router.push('/purchases')
+}
+
+onMounted(async () => {
+  detail.value = await getPurchase(route.params.id)
+})
+</script>

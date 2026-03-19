@@ -15,6 +15,7 @@ class InventoryTxn(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     product_id: int = Field(foreign_key="product.id", index=True)
+    warehouse_id: Optional[int] = Field(default=None, foreign_key="warehouse.id", index=True)
     change_qty: float = Field(nullable=False)
     after_qty: float = Field(nullable=False)
     biz_type: str = Field(max_length=30, index=True)
