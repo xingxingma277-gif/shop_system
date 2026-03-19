@@ -142,6 +142,10 @@ function applyRouteQuery() {
     : 'sales'
   tab.value = nextTab
   salesFilters.status = typeof route.query.status === 'string' ? route.query.status : ''
+  if (typeof route.query.start_date === 'string' && typeof route.query.end_date === 'string') {
+    salesFilters.dateRange = [dayjs(route.query.start_date).toDate(), dayjs(route.query.end_date).toDate()]
+    payFilters.dateRange = [dayjs(route.query.start_date).toDate(), dayjs(route.query.end_date).toDate()]
+  }
 }
 
 function refreshByTab() {
@@ -159,7 +163,9 @@ function onTabChange() {
 }
 
 function backToDashboard() {
-  router.push('/dashboard')
+  const query = {}
+  if (typeof route.query.preset === 'string') query.preset = route.query.preset
+  router.push({ path: '/dashboard', query })
 }
 
 async function loadSales() {

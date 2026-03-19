@@ -193,11 +193,12 @@
 
 <script setup>
 import dayjs from 'dayjs'
-import { onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { getDashboardSummary } from '../api/reports'
 import { hasPermission } from '../utils/auth'
 
+const route = useRoute()
 const router = useRouter()
 const rangePreset = ref('30d')
 const kpis = reactive({ sale_total_amount: 0, sale_paid_amount: 0, sale_ar_amount: 0, inventory_txn_count: 0, purchase_total_amount: 0, purchase_ap_amount: 0, quote_count: 0, delivery_pending_count: 0 })
@@ -221,6 +222,21 @@ function buildRangeParams() {
   }
 }
 
+function buildDrilldownQuery(extra = {}) {
+  const query = { ...extra, source: 'dashboard', preset: rangePreset.value }
+  if (rangePreset.value !== 'all') {
+    Object.assign(query, buildRangeParams())
+  }
+  return query
+}
+
+function applyRouteQuery() {
+  const preset = typeof route.query.preset === 'string' ? route.query.preset : ''
+  if (['7d', '30d', 'all'].includes(preset)) {
+    rangePreset.value = preset
+  }
+}
+
 async function loadDashboard() {
   const data = await getDashboardSummary(buildRangeParams())
   Object.assign(kpis, data.kpis || {})
@@ -237,26 +253,34 @@ async function loadDashboard() {
 }
 
 function handlePresetChange() {
-  loadDashboard()
+  router.replace({ path: '/dashboard', query: { preset: rangePreset.value } })
 }
 
 function handleAlertAction(item) {
   if (!item?.action_path) return
-  router.push(item.action_query ? { path: item.action_path, query: item.action_query } : item.action_path)
+  const query = item.action_query ? buildDrilldownQuery(item.action_query) : buildDrilldownQuery()
+  router.push({ path: item.action_path, query })
 }
 
 function goLowStockLedger(item) {
   if (!item?.id) return
   router.push({
     path: '/inventory-ledger',
-    query: {
+    query: buildDrilldownQuery({
       product_id: String(item.id),
       product_name: item.name,
       context: 'low_stock',
-      source: 'dashboard',
-    },
+    }),
   })
 }
 
-onMounted(loadDashboard)
+watch(() => route.query.preset, async () => {
+  applyRouteQuery()
+  await loadDashboard()
+})
+
+onMounted(async () => {
+  applyRouteQuery()
+  await loadDashboard()
+})
 </script>

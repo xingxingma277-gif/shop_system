@@ -137,10 +137,17 @@ async function loadInventory() {
 function applyRouteQuery() {
   const nextTab = typeof route.query.tab === 'string' ? route.query.tab : 'ap'
   if (['ap', 'aging', 'inventory'].includes(nextTab)) tab.value = nextTab
+  if (typeof route.query.start_date === 'string' && typeof route.query.end_date === 'string') {
+    const dateRange = [dayjs(route.query.start_date).toDate(), dayjs(route.query.end_date).toDate()]
+    apFilters.dateRange = dateRange
+    invFilters.dateRange = dateRange
+  }
 }
 
 function backToDashboard() {
-  router.push('/dashboard')
+  const query = {}
+  if (typeof route.query.preset === 'string') query.preset = route.query.preset
+  router.push({ path: '/dashboard', query })
 }
 
 watch(() => route.query, applyRouteQuery)

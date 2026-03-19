@@ -70,10 +70,15 @@ function applyRouteQuery() {
   filters.warehouse_id = route.query.warehouse_id ? Number(route.query.warehouse_id) : null
   filters.biz_type = typeof route.query.biz_type === 'string' ? route.query.biz_type : ''
   productName.value = typeof route.query.product_name === 'string' ? route.query.product_name : ''
+  if (typeof route.query.start_date === 'string' && typeof route.query.end_date === 'string') {
+    filters.dateRange = [dayjs(route.query.start_date).toDate(), dayjs(route.query.end_date).toDate()]
+  }
 }
 
 function backToDashboard() {
-  router.push('/dashboard')
+  const query = {}
+  if (typeof route.query.preset === 'string') query.preset = route.query.preset
+  router.push({ path: '/dashboard', query })
 }
 
 async function load() {
