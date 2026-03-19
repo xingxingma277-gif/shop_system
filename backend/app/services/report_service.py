@@ -237,13 +237,20 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
 
     alerts = []
     if low_stock_items:
+        first_low_stock = low_stock_items[0]
         alerts.append({
             'level': 'warning',
             'code': 'LOW_STOCK',
             'title': '低库存预警',
             'message': f'当前有 {len(low_stock_items)} 个商品触发低库存预警。',
-            'action_label': '查看库存台账',
+            'action_label': '查看最低库存商品台账',
             'action_path': '/inventory-ledger',
+            'action_query': {
+                'product_id': str(first_low_stock.id),
+                'product_name': first_low_stock.name,
+                'context': 'low_stock',
+                'source': 'dashboard',
+            },
         })
     if float(aging.get('90_plus', 0) or 0) > 0:
         alerts.append({
@@ -253,7 +260,7 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
             'message': f"90 天以上应付余额为 {aging.get('90_plus', 0)}。",
             'action_label': '查看应付账龄',
             'action_path': '/reports',
-            'action_query': {'tab': 'aging'},
+            'action_query': {'tab': 'aging', 'context': 'ap_aging', 'source': 'dashboard'},
         })
     if float(ar_aging.get('90_plus', 0) or 0) > 0:
         alerts.append({
@@ -263,7 +270,7 @@ def dashboard_summary(session: Session, start_date: datetime | None = None, end_
             'message': f"90 天以上应收余额为 {ar_aging.get('90_plus', 0)}。",
             'action_label': '查看未收订单',
             'action_path': '/transactions',
-            'action_query': {'tab': 'sales', 'status': 'unpaid'},
+            'action_query': {'tab': 'sales', 'status': 'unpaid', 'context': 'ar_aging', 'source': 'dashboard'},
         })
     for idx, item in enumerate(funnel[1:], start=1):
         prev = funnel[idx - 1]

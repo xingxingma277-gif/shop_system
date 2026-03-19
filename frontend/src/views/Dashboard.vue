@@ -71,7 +71,7 @@
           <template #header><b>低库存预警</b></template>
           <el-empty v-if="!lowStockItems.length" description="暂无低库存商品" :image-size="80" />
           <div v-else style="display:flex;flex-direction:column;gap:8px;">
-            <div v-for="item in lowStockItems" :key="item.id" style="display:flex;justify-content:space-between;gap:12px;font-size:13px;">
+            <div v-for="item in lowStockItems" :key="item.id" style="display:flex;justify-content:space-between;gap:12px;font-size:13px;align-items:center;">
               <div>
                 <div style="font-weight:600;">{{ item.name }}</div>
                 <div style="color:#909399;">{{ item.sku || '无 SKU' }}</div>
@@ -79,6 +79,7 @@
               <div style="text-align:right;">
                 <div>库存：{{ item.stock_quantity }}</div>
                 <div style="color:#E6A23C;">预警：{{ item.stock_warning_threshold }}</div>
+                <el-button link type="primary" @click="goLowStockLedger(item)">查看台账</el-button>
               </div>
             </div>
           </div>
@@ -242,6 +243,19 @@ function handlePresetChange() {
 function handleAlertAction(item) {
   if (!item?.action_path) return
   router.push(item.action_query ? { path: item.action_path, query: item.action_query } : item.action_path)
+}
+
+function goLowStockLedger(item) {
+  if (!item?.id) return
+  router.push({
+    path: '/inventory-ledger',
+    query: {
+      product_id: String(item.id),
+      product_name: item.name,
+      context: 'low_stock',
+      source: 'dashboard',
+    },
+  })
 }
 
 onMounted(loadDashboard)

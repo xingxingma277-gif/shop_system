@@ -1,6 +1,19 @@
 <template>
   <el-card>
-    <template #header><b>经营报表</b></template>
+    <template #header>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <b>经营报表</b>
+        <el-button v-if="showDashboardBack" link type="primary" @click="backToDashboard">返回看板</el-button>
+      </div>
+    </template>
+
+    <el-alert
+      v-if="contextMessage"
+      :title="contextMessage"
+      type="info"
+      :closable="false"
+      style="margin-bottom:12px;"
+    />
 
     <el-tabs v-model="tab">
       <el-tab-pane label="应付汇总" name="ap">
@@ -58,13 +71,14 @@
 
 <script setup>
 import dayjs from 'dayjs'
-import { onMounted, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { getApAging, getApSummary, getInventorySummary } from '../api/reports'
 import { listSuppliers } from '../api/suppliers'
 import { listWarehouses } from '../api/warehouses'
 
 const route = useRoute()
+const router = useRouter()
 const tab = ref('ap')
 
 const suppliers = ref([])
@@ -81,6 +95,15 @@ const agingFilters = reactive({ supplier_id: null, as_of: null })
 const invRows = ref([])
 const invSummary = reactive({ in_qty: 0, out_qty: 0, count: 0 })
 const invFilters = reactive({ warehouse_id: null, dateRange: [] })
+
+const showDashboardBack = computed(() => route.query.source === 'dashboard')
+const contextMessage = computed(() => {
+  if (route.query.source !== 'dashboard') return ''
+  if (route.query.context === 'ap_aging' || tab.value === 'aging') {
+    return '当前来自看板预警，已自动切换到 AP Aging 视图。'
+  }
+  return '当前来自看板经营上下文。'
+})
 
 async function loadAp() {
   const data = await getApSummary({
@@ -116,7 +139,11 @@ function applyRouteQuery() {
   if (['ap', 'aging', 'inventory'].includes(nextTab)) tab.value = nextTab
 }
 
-watch(() => route.query.tab, applyRouteQuery)
+function backToDashboard() {
+  router.push('/dashboard')
+}
+
+watch(() => route.query, applyRouteQuery)
 
 onMounted(async () => {
   applyRouteQuery()

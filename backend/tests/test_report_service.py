@@ -47,6 +47,8 @@ def test_dashboard_summary_includes_kpis_low_stock_and_audits():
         assert data['ar_aging']['0_30'] == 120
         low_stock_alert = next(alert for alert in data['alerts'] if alert['code'] == 'LOW_STOCK')
         assert low_stock_alert['action_path'] == '/inventory-ledger'
+        assert low_stock_alert['action_query']['product_name'] == '低库存商品'
+        assert low_stock_alert['action_query']['context'] == 'low_stock'
         assert len(data['low_stock_items']) == 1
         assert data['low_stock_items'][0]['name'] == '低库存商品'
         assert len(data['recent_audits']) == 1
@@ -118,9 +120,15 @@ def test_dashboard_summary_builds_actionable_alerts():
         assert 'LOW_STOCK' in codes
         assert 'AP_90_PLUS' in codes
         assert 'AR_90_PLUS' in codes
+        low_stock_alert = next(alert for alert in data['alerts'] if alert['code'] == 'LOW_STOCK')
         ap_alert = next(alert for alert in data['alerts'] if alert['code'] == 'AP_90_PLUS')
         ar_alert = next(alert for alert in data['alerts'] if alert['code'] == 'AR_90_PLUS')
+        assert low_stock_alert['action_path'] == '/inventory-ledger'
+        assert low_stock_alert['action_query']['product_id'] == str(low_stock_product.id)
+        assert low_stock_alert['action_query']['source'] == 'dashboard'
         assert ap_alert['action_path'] == '/reports'
         assert ap_alert['action_query']['tab'] == 'aging'
+        assert ap_alert['action_query']['source'] == 'dashboard'
         assert ar_alert['action_path'] == '/transactions'
         assert ar_alert['action_query']['status'] == 'unpaid'
+        assert ar_alert['action_query']['context'] == 'ar_aging'
