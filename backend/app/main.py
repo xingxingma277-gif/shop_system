@@ -11,6 +11,15 @@ from app.routers.products import router as products_router
 from app.routers.sales import router as sales_router
 from app.routers.pricing import router as pricing_router
 from app.routers.health import router as health_router
+from app.routers.suppliers import router as suppliers_router
+from app.routers.warehouses import router as warehouses_router
+from app.routers.purchases import router as purchases_router
+from app.routers.inventory import router as inventory_router
+from app.routers.purchase_payments import router as purchase_payments_router
+from app.routers.reports import router as reports_router
+from app.routers.inventory_adjustments import router as inventory_adjustments_router
+from app.routers.admin import router as admin_router
+from app.routers.auth import router as auth_router
 
 app = FastAPI(title="Shop System", version="1.2.0")
 
@@ -30,5 +39,14 @@ app.include_router(sales_router)
 app.include_router(payments_router)
 app.include_router(buyers_router)
 app.include_router(pricing_router)
+app.include_router(suppliers_router)
+app.include_router(warehouses_router)
+app.include_router(purchases_router)
+app.include_router(inventory_router)
+app.include_router(purchase_payments_router)
+app.include_router(reports_router)
+app.include_router(inventory_adjustments_router)
+app.include_router(admin_router)
+app.include_router(auth_router)
 
 app.include_router(transactions_router)

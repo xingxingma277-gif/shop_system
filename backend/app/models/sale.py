@@ -33,11 +33,19 @@ class Sale(SQLModel, table=True):
     signed_by: Optional[str] = Field(default=None, max_length=100)
 
     # 业务阶段扩展
+    order_type: str = Field(default="sale_direct", max_length=20, index=True)
     order_stage: str = Field(default="SALE_CONFIRMED", max_length=30, index=True)
     inventory_effected: bool = Field(default=True)
+    needs_delivery: bool = Field(default=False)
     delivery_status: str = Field(default="NONE", max_length=30)
+    receiver_name: Optional[str] = Field(default=None, max_length=100)
+    receiver_phone: Optional[str] = Field(default=None, max_length=50)
+    receiver_address: Optional[str] = Field(default=None, max_length=255)
+    delivery_note: Optional[str] = Field(default=None, max_length=255)
     quote_confirmed_at: Optional[datetime] = None
+    sale_confirmed_at: Optional[datetime] = None
     delivery_created_at: Optional[datetime] = None
+    delivered_at: Optional[datetime] = None
 
     sale_date: datetime = Field(default_factory=utc_now, nullable=False, index=True)
     note: Optional[str] = Field(default=None, max_length=500)

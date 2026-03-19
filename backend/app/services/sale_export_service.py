@@ -229,6 +229,20 @@ def _fill_sale_header(ws, *, sale, customer_phone: str, doc_type: str):
             elif val in ["电话：", "电话", "联系电话：", "联系电话"]:
                 _set_cell_value(ws, r, c + 2, customer_phone)
 
+    if doc_type == "delivery":
+        receiver = (getattr(sale, "receiver_name", None) or "-")
+        receiver_phone = (getattr(sale, "receiver_phone", None) or "-")
+        receiver_address = (getattr(sale, "receiver_address", None) or "-")
+        for r in range(1, 40):
+            for c in range(1, 20):
+                text = str(ws.cell(row=r, column=c).value or "").strip()
+                if text in ["收货人：", "收货人"]:
+                    _set_cell_value(ws, r, c + 2, receiver)
+                elif text in ["联系电话：", "联系电话", "电话：", "电话"]:
+                    _set_cell_value(ws, r, c + 2, receiver_phone)
+                elif text in ["收货地址：", "收货地址"]:
+                    _set_cell_value(ws, r, c + 2, receiver_address)
+
     # 如果是报价单或销售单，抹除无关紧要的物流签收字段
     if doc_type in ["quote", "sale"]:
         for r in range(12, ws.max_row + 1):
