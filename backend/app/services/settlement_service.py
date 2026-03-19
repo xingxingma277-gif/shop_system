@@ -91,10 +91,7 @@ def mark_sale_void(session: Session, *, sale_id: int, note: Optional[str]):
             p = session.get(Product, si.product_id)
             if not p:
                 continue
-            p.stock_quantity = round(float(p.stock_quantity or 0) + float(si.qty), 2)
-            session.add(InventoryTxn(product_id=p.id, change_qty=float(si.qty), after_qty=float(p.stock_quantity),
-                                     biz_type="sale_void", biz_id=sale.id, sale_id=sale.id, note="单据作废回补库存"))
-            session.add(p)
+            post_txn(session, product_id=p.id, warehouse_id=None, change_qty=float(si.qty), biz_type="sale_void", biz_id=sale.id, sale_id=sale.id, note="单据作废回补库存")
 
     sale.biz_status = "VOIDED"
     session.add(SaleOperation(sale_id=sale.id, op_type="VOID", amount=float(sale.total_amount), note=note))
@@ -162,11 +159,7 @@ def return_sale_stock(session: Session, *, sale_id: int, note: Optional[str]):
         p = session.get(Product, si.product_id)
         if not p:
             continue
-        p.stock_quantity = round(float(p.stock_quantity or 0) + float(si.qty), 2)
-        session.add(InventoryTxn(product_id=p.id, change_qty=float(si.qty), after_qty=float(p.stock_quantity),
-                                 biz_type="sale_return", biz_id=sale.id, sale_id=sale.id,
-                                 note=note or "销售退货回补库存"))
-        session.add(p)
+        post_txn(session, product_id=p.id, warehouse_id=None, change_qty=float(si.qty), biz_type="sale_return", biz_id=sale.id, sale_id=sale.id, note=note or "销售退货回补库存")
     session.add(SaleOperation(sale_id=sale.id, op_type="RETURN", amount=float(sale.total_amount), note=note))
     session.commit()
     return sale

@@ -88,12 +88,15 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useRoute, useRouter } from 'vue-router'
 
 import { listProducts, createProduct, updateProduct, toggleProductActive, deleteProduct } from '../api/products'
 import { money } from '../utils/format'
 
+const route = useRoute()
+const router = useRouter()
 const q = ref('')
 const page = ref(1)
 const pageSize = ref(20)
@@ -123,6 +126,10 @@ function resetForm() {
   form.standard_cost = 0
   form.stock_quantity = 0
   form.stock_warning_threshold = 0
+}
+
+function applyRouteQuery() {
+  q.value = typeof route.query.q === 'string' ? route.query.q : ''
 }
 
 async function fetchList() {
@@ -209,5 +216,19 @@ async function removeProduct(row) {
   }
 }
 
-onMounted(fetchList)
+watch(q, (value) => {
+  const nextQuery = value ? { q: value } : {}
+  if ((route.query.q || '') === (value || '')) return
+  router.replace({ path: '/products', query: nextQuery })
+})
+
+watch(() => route.query.q, async () => {
+  applyRouteQuery()
+  await fetchList()
+})
+
+onMounted(async () => {
+  applyRouteQuery()
+  await fetchList()
+})
 </script>
