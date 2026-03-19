@@ -87,7 +87,17 @@ function backToDashboard() {
 
 function goProduct(row) {
   if (!row?.product_name) return
-  router.push({ path: '/products', query: { q: row.product_name } })
+  const query = { q: row.product_name, return_to: 'inventory-ledger' }
+  if (typeof route.query.product_id === 'string') query.product_id = route.query.product_id
+  if (typeof route.query.product_name === 'string') query.product_name = route.query.product_name
+  if (typeof route.query.warehouse_id === 'string') query.warehouse_id = route.query.warehouse_id
+  if (typeof route.query.biz_type === 'string') query.biz_type = route.query.biz_type
+  if (typeof route.query.preset === 'string') query.preset = route.query.preset
+  if (typeof route.query.start_date === 'string') query.start_date = route.query.start_date
+  if (typeof route.query.end_date === 'string') query.end_date = route.query.end_date
+  if (typeof route.query.source === 'string') query.source = route.query.source
+  if (typeof route.query.context === 'string') query.context = route.query.context
+  router.push({ path: '/products', query })
 }
 
 async function load() {

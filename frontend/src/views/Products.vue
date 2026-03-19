@@ -2,7 +2,10 @@
   <el-card shadow="never">
     <template #header>
       <div class="card-header">
-        <div style="font-weight:700;">商品管理</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="font-weight:700;">商品管理</div>
+          <el-button v-if="backLabel" link type="primary" @click="backToOrigin">{{ backLabel }}</el-button>
+        </div>
         <div>
           <el-input v-model="q" placeholder="搜索商品名或SKU" style="width: 260px;" @keyup.enter="fetchList" />
           <el-button style="margin-left:8px;" @click="fetchList">搜索</el-button>
@@ -10,6 +13,8 @@
         </div>
       </div>
     </template>
+
+    <el-alert v-if="contextMessage" :title="contextMessage" type="info" :closable="false" style="margin-bottom:12px;" />
 
     <el-table :data="rows" border>
       <el-table-column prop="name" label="名称" min-width="220" />
@@ -88,7 +93,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -128,8 +133,32 @@ function resetForm() {
   form.stock_warning_threshold = 0
 }
 
+const backLabel = computed(() => route.query.return_to === 'inventory-ledger' ? '返回库存台账' : '')
+const contextMessage = computed(() => {
+  if (route.query.return_to !== 'inventory-ledger') return ''
+  if (route.query.context === 'low_stock' && typeof route.query.product_name === 'string') {
+    return `当前来自低库存台账，已按商品“${route.query.product_name}”定位到商品管理。`
+  }
+  return '当前来自库存台账上下文。'
+})
+
 function applyRouteQuery() {
   q.value = typeof route.query.q === 'string' ? route.query.q : ''
+}
+
+function backToOrigin() {
+  if (route.query.return_to !== 'inventory-ledger') return
+  const query = {}
+  if (typeof route.query.product_id === 'string') query.product_id = route.query.product_id
+  if (typeof route.query.product_name === 'string') query.product_name = route.query.product_name
+  if (typeof route.query.warehouse_id === 'string') query.warehouse_id = route.query.warehouse_id
+  if (typeof route.query.biz_type === 'string') query.biz_type = route.query.biz_type
+  if (typeof route.query.preset === 'string') query.preset = route.query.preset
+  if (typeof route.query.start_date === 'string') query.start_date = route.query.start_date
+  if (typeof route.query.end_date === 'string') query.end_date = route.query.end_date
+  if (typeof route.query.source === 'string') query.source = route.query.source
+  if (typeof route.query.context === 'string') query.context = route.query.context
+  router.push({ path: '/inventory-ledger', query })
 }
 
 async function fetchList() {
@@ -217,7 +246,11 @@ async function removeProduct(row) {
 }
 
 watch(q, (value) => {
-  const nextQuery = value ? { q: value } : {}
+  const nextQuery = {}
+  if (value) nextQuery.q = value
+  for (const key of ['return_to', 'product_id', 'product_name', 'warehouse_id', 'biz_type', 'preset', 'start_date', 'end_date', 'source', 'context']) {
+    if (typeof route.query[key] === 'string') nextQuery[key] = route.query[key]
+  }
   if ((route.query.q || '') === (value || '')) return
   router.replace({ path: '/products', query: nextQuery })
 })
