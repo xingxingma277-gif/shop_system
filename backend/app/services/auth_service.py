@@ -1,13 +1,14 @@
 from datetime import timedelta
 import secrets
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException  # <--- 添加了 Depends
 from sqlmodel import Session, select
 
 from app.core.errors import BadRequestError, NotFoundError
 from app.core.time import utc_now
 from app.models import AuthToken, Permission, Role, RolePermission, User, UserRole
 from app.services.auth_admin_service import _hash_password
+from app.db.session import get_session  # <--- 添加了 get_session
 
 
 _TOKEN_TTL_SECONDS = 60 * 60 * 12
@@ -88,7 +89,11 @@ def build_current_user(session: Session, user: User):
 
 
 def require_permissions(*codes: str):
-    def dependency(session: Session, authorization: str | None = Header(default=None), x_auth_token: str | None = Header(default=None)):
+    def dependency(
+        session: Session = Depends(get_session),  # <--- 修改了这里，加上了 = Depends(get_session)
+        authorization: str | None = Header(default=None),
+        x_auth_token: str | None = Header(default=None)
+    ):
         existing_users = session.exec(select(User.id).limit(1)).first()
         user = get_user_by_token(session, authorization, x_auth_token)
         if not existing_users:
