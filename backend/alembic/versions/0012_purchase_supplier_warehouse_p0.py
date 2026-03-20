@@ -90,13 +90,7 @@ def upgrade() -> None:
     columns = [c['name'] for c in inspector.get_columns('inventory_txn')]
     if 'warehouse_id' not in columns:
         op.add_column('inventory_txn', sa.Column('warehouse_id', sa.Integer(), nullable=True))
-        with op.batch_alter_table('inventory_txn') as batch_op:
-            batch_op.create_foreign_key(
-                'fk_inventory_txn_warehouse_id',
-                'warehouse',
-                ['warehouse_id'],
-                ['id']
-            )
+        op.create_foreign_key('fk_inventory_txn_warehouse_id', 'inventory_txn', 'warehouse', ['warehouse_id'], ['id'])
         op.create_index('ix_inventory_txn_warehouse_id', 'inventory_txn', ['warehouse_id'], unique=False)
 
     op.execute("INSERT INTO warehouse (code, name, address, status, is_default, created_at) VALUES ('MAIN', '默认仓库', NULL, 'ACTIVE', 1, CURRENT_TIMESTAMP)")

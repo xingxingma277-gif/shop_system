@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from sqlalchemy import inspect
+from sqlmodel import Session
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers.contacts import router as contacts_router
@@ -20,6 +22,8 @@ from app.routers.reports import router as reports_router
 from app.routers.inventory_adjustments import router as inventory_adjustments_router
 from app.routers.admin import router as admin_router
 from app.routers.auth import router as auth_router
+from app.db.session import engine
+from app.services import auth_admin_service
 
 app = FastAPI(title="Shop System", version="1.2.0")
 
@@ -50,3 +54,12 @@ app.include_router(admin_router)
 app.include_router(auth_router)
 
 app.include_router(transactions_router)
+
+
+@app.on_event('startup')
+def ensure_default_dev_admin():
+    inspector = inspect(engine)
+    if not inspector.has_table('user'):
+        return
+    with Session(engine) as session:
+        auth_admin_service.ensure_dev_admin(session)

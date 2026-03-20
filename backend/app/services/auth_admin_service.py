@@ -2,6 +2,7 @@ import hashlib
 
 from sqlmodel import Session, delete, select
 
+from app.core.config import APP_ENV, DEFAULT_ADMIN_PASSWORD, DEFAULT_ADMIN_USERNAME
 from app.core.errors import BadRequestError, NotFoundError
 from app.models import Permission, Role, RolePermission, User, UserRole
 from app.services import audit_log_service
@@ -172,3 +173,22 @@ def _to_role_read(session: Session, role: Role):
         'permission_codes': [perm_map[pid].code for pid in permission_ids if pid in perm_map],
         'created_at': role.created_at,
     }
+
+
+def ensure_dev_admin(session: Session):
+    if APP_ENV.lower() != 'dev':
+        return None
+    existing = session.exec(select(User).limit(1)).first()
+    if existing:
+        return existing
+    user = User(
+        username=DEFAULT_ADMIN_USERNAME.strip(),
+        display_name='开发管理员',
+        password_hash=_hash_password(DEFAULT_ADMIN_PASSWORD),
+        status='ACTIVE',
+        is_superuser=True,
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user

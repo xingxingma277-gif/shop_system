@@ -25,3 +25,15 @@ def test_create_role_user_and_audit_logs():
         assert role['permission_codes'] == ['purchase.view']
         logs = audit_log_service.list_logs(session)
         assert len(logs) >= 3
+
+
+
+def test_ensure_dev_admin_creates_bootstrap_user_when_empty():
+    with _make_session() as session:
+        user = auth_admin_service.ensure_dev_admin(session)
+        assert user is not None
+        assert user.username == 'admin'
+        assert user.is_superuser is True
+
+        same_user = auth_admin_service.ensure_dev_admin(session)
+        assert same_user.id == user.id
