@@ -1,4 +1,5 @@
-"""p0 purchase supplier warehouse and inventory warehouse dimension
+"""
+p0 purchase supplier warehouse and inventory warehouse dimension
 
 Revision ID: 0012_purchase_supplier_warehouse_p0
 Revises: 0011_order_flow_delivery_fields
@@ -67,7 +68,12 @@ def upgrade() -> None:
     op.create_index('ix_purchase_supplier_id', 'purchase', ['supplier_id'], unique=False)
     op.create_index('ix_purchase_warehouse_id', 'purchase', ['warehouse_id'], unique=False)
     op.create_index('ix_purchase_status', 'purchase', ['status'], unique=False)
-    op.create_index('ix_purchase_supplier_date_desc', 'purchase', ['supplier_id', sa.text('purchase_date DESC')], unique=False)
+    op.create_index(
+        'ix_purchase_supplier_date_desc',
+        'purchase',
+        ['supplier_id', sa.text('purchase_date DESC')],
+        unique=False
+    )
 
     op.create_table(
         'purchase_item',
@@ -88,19 +94,34 @@ def upgrade() -> None:
     conn = op.get_bind()
     inspector = inspect(conn)
     columns = [c['name'] for c in inspector.get_columns('inventory_txn')]
-    if 'warehouse_id' not in columns:
-        op.add_column('inventory_txn', sa.Column('warehouse_id', sa.Integer(), nullable=True))
-        op.create_foreign_key('fk_inventory_txn_warehouse_id', 'inventory_txn', 'warehouse', ['warehouse_id'], ['id'])
-        op.create_index('ix_inventory_txn_warehouse_id', 'inventory_txn', ['warehouse_id'], unique=False)
 
-    op.execute("INSERT INTO warehouse (code, name, address, status, is_default, created_at) VALUES ('MAIN', '默认仓库', NULL, 'ACTIVE', 1, CURRENT_TIMESTAMP)")
+    if 'warehouse_id' not in columns:
+        with op.batch_alter_table('inventory_txn') as batch_op:
+            batch_op.add_column(sa.Column('warehouse_id', sa.Integer(), nullable=True))
+            batch_op.create_foreign_key(
+                'fk_inventory_txn_warehouse_id',
+                'warehouse',
+                ['warehouse_id'],
+                ['id']
+            )
+            batch_op.create_index('ix_inventory_txn_warehouse_id', ['warehouse_id'], unique=False)
+
+    op.execute(
+        "INSERT INTO warehouse (code, name, address, status, is_default, created_at) "
+        "VALUES ('MAIN', '默认仓库', NULL, 'ACTIVE', 1, CURRENT_TIMESTAMP)"
+    )
 
 
 def downgrade() -> None:
-    with op.batch_alter_table('inventory_txn') as batch_op:
-        batch_op.drop_index('ix_inventory_txn_warehouse_id')
-        batch_op.drop_constraint('fk_inventory_txn_warehouse_id', type_='foreignkey')
-        batch_op.drop_column('warehouse_id')
+    conn = op.get_bind()
+    inspector = inspect(conn)
+    columns = [c['name'] for c in inspector.get_columns('inventory_txn')]
+
+    if 'warehouse_id' in columns:
+        with op.batch_alter_table('inventory_txn') as batch_op:
+            batch_op.drop_index('ix_inventory_txn_warehouse_id')
+            batch_op.drop_constraint('fk_inventory_txn_warehouse_id', type_='foreignkey')
+            batch_op.drop_column('warehouse_id')
 
     op.drop_index('ix_purchase_item_product_id', table_name='purchase_item')
     op.drop_index('ix_purchase_item_purchase_id', table_name='purchase_item')

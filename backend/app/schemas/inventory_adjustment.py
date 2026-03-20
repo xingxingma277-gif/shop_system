@@ -7,7 +7,7 @@ from sqlmodel import SQLModel, Field
 class InventoryAdjustmentCreate(SQLModel):
     warehouse_id: int
     product_id: int
-    adj_type: str = Field(pattern="^(GAIN|LOSS)$")
+    adj_type: str = Field(regex=r"^(GAIN|LOSS)$")
     qty: float = Field(gt=0)
     reason: Optional[str] = None
     note: Optional[str] = None
