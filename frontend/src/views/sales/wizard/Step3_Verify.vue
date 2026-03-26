@@ -2,13 +2,13 @@
   <div class="step-container">
     <el-alert
       v-if="wizardStore.orderType === 'quote'"
-      title="当前为【报价单】模式，生成的单据仅作报价使用，不会扣减系统库存。"
+      title="当前为【报价单】模式，仅记录报价，不会扣减库存。"
       type="info" show-icon style="margin-bottom: 20px;"
     />
 
     <div class="step-header">
-      <h3 class="step-title">第三步：添加商品与核价</h3>
-      <el-button type="primary" plain @click="addRow">+ 添加一行商品</el-button>
+      <h3 class="step-title">第三步：添加商品</h3>
+      <el-button type="primary" plain @click="addRow">+ 添加商品</el-button>
     </div>
 
     <el-table
@@ -60,34 +60,32 @@
       <el-table-column label="历史拿货价" width="120" align="right">
         <template #default="{ row }">
           <span v-if="row.loadingHistory" class="loading-text">查询中...</span>
-          <span v-else-if="row.last_price !== null" class="history-price" title="上次拿货价">
-            ¥ {{ row.last_price }}
-          </span>
+          <span v-else-if="row.last_price !== null" class="history-price" title="上次拿货价">¥ {{ row.last_price }}</span>
           <span v-else style="color: #c0c4cc;">无记录</span>
         </template>
       </el-table-column>
 
-      <el-table-column label="开单数量" width="140">
+      <el-table-column label="数量" width="140">
         <template #default="{ row }">
           <el-input-number v-model="row.qty" :min="1" @change="calculateTotal" style="width: 100%;" />
         </template>
       </el-table-column>
 
-      <el-table-column label="实际单价" width="140">
+      <el-table-column label="单价" width="140">
         <template #default="{ row }">
           <el-input-number v-model="row.actual_price" :min="0" :precision="2" :step="1" @change="calculateTotal" style="width: 100%;" />
         </template>
       </el-table-column>
 
-      <el-table-column label="金额小计" width="130" align="right">
+      <el-table-column label="小计" width="130" align="right">
         <template #default="{ row }">
           <span class="highlight-amount">¥ {{ ((row.qty || 0) * (row.actual_price || 0)).toFixed(2) }}</span>
         </template>
       </el-table-column>
 
-      <el-table-column label="行备注" min-width="180">
+      <el-table-column label="备注" min-width="180">
         <template #default="{ row }">
-          <el-input v-model="row.remark" placeholder="本行特殊要求..." />
+          <el-input v-model="row.remark" placeholder="本行说明（可选）" />
         </template>
       </el-table-column>
 
@@ -100,41 +98,58 @@
 
     <div class="summary-section">
       <div class="summary-text">
-        <span>整单合计金额：</span>
+        <span>整单金额：</span>
         <span class="total-amount">¥ {{ formData.totalAmount.toFixed(2) }}</span>
       </div>
     </div>
 
     <div class="step-actions">
-      <el-button size="large" @click="goPrev">返回修改客户</el-button>
-      <el-button type="primary" size="large" @click="goNext">下一步：确认结算与提交</el-button>
+      <el-button size="large" @click="goPrev">返回选择客户</el-button>
+      <el-button type="primary" size="large" @click="goNext">下一步：收款与提交</el-button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useSaleWizardStore } from '../../../stores/saleWizard'
 import { useCatalogStore } from '../../../stores/catalog'
+import { useSaleWizardDraft } from '../../../composables/useSaleWizardDraft'
 import http from '../../../api/http'
 
 const router = useRouter()
 const wizardStore = useSaleWizardStore()
 const catalog = useCatalogStore()
+const { save } = useSaleWizardDraft(wizardStore)
 
 const highlightRowIndex = ref(-1)
 
 const formData = reactive({
-  items: wizardStore.items.length > 0 ? [...wizardStore.items] : [{ product_id: null, qty: 1 }],
+  items: wizardStore.items.length > 0 ? wizardStore.items.map((item) => ({ ...item })) : [{ product_id: null, qty: 1, actual_price: 0 }],
   totalAmount: wizardStore.totalAmount || 0
 })
 
-const tableRowClassName = ({ rowIndex }) => {
-  if (rowIndex === highlightRowIndex.value) {
-    return 'duplicate-row-flash'
+watch(
+  () => formData.items,
+  () => {
+    wizardStore.items = formData.items.map((item) => ({ ...item }))
+    save()
+  },
+  { deep: true }
+)
+
+watch(
+  () => formData.totalAmount,
+  (val) => {
+    wizardStore.totalAmount = val
+    save()
   }
+)
+
+const tableRowClassName = ({ rowIndex }) => {
+  if (rowIndex === highlightRowIndex.value) return 'duplicate-row-flash'
   return ''
 }
 
@@ -147,20 +162,18 @@ const handleProductChange = async (productId, row, index) => {
 
   const duplicateIndex = formData.items.findIndex((item, i) => i !== index && item.product_id === productId)
   if (duplicateIndex !== -1) {
-    ElMessage.warning(`该商品已在第 ${duplicateIndex + 1} 行，已为您高亮显示，请直接修改数量！`)
+    ElMessage.warning(`商品已在第 ${duplicateIndex + 1} 行，请直接修改原行数量。`)
     row.product_id = null
-
     highlightRowIndex.value = duplicateIndex
-    setTimeout(() => {
-      if (highlightRowIndex.value === duplicateIndex) {
-        highlightRowIndex.value = -1
-      }
-    }, 3000)
 
+    setTimeout(() => {
+      if (highlightRowIndex.value === duplicateIndex) highlightRowIndex.value = -1
+    }, 3000)
+    save()
     return
   }
 
-  const product = catalog.products.find(p => p.id === productId)
+  const product = catalog.products.find((p) => p.id === productId)
   if (product) {
     row.product_name = product.name
     row.spec = product.spec
@@ -182,7 +195,7 @@ const handleProductChange = async (productId, row, index) => {
     if (res.data && res.data.price !== null && res.data.price !== undefined) {
       row.last_price = res.data.price
       row.actual_price = res.data.price
-      ElMessage.success(`已为您自动带入【${row.product_name}】的历史拿货价: ￥${row.last_price}`)
+      ElMessage.success(`已自动带入【${row.product_name}】历史拿货价：¥${row.last_price}`)
     } else {
       row.last_price = null
     }
@@ -191,55 +204,57 @@ const handleProductChange = async (productId, row, index) => {
   } finally {
     row.loadingHistory = false
     calculateTotal()
+    save()
   }
 }
 
 const addRow = () => {
   formData.items.push({ product_id: null, qty: 1, actual_price: 0 })
+  save()
 }
 
 const removeRow = (index) => {
   formData.items.splice(index, 1)
-  if (formData.items.length === 0) {
-    addRow()
-  }
+  if (formData.items.length === 0) addRow()
   calculateTotal()
+  save()
 }
 
 const calculateTotal = () => {
   let total = 0
-  formData.items.forEach(item => {
+  formData.items.forEach((item) => {
     total += (item.qty || 0) * (item.actual_price || 0)
   })
   formData.totalAmount = total
-  wizardStore.totalAmount = total
+  save()
 }
 
 const goPrev = () => {
-  wizardStore.items = [...formData.items]
+  wizardStore.setCurrentStep(2)
+  save()
   router.push('/sales/wizard/step2')
 }
 
 const goNext = () => {
-  const validItems = formData.items.filter(item => item.product_id)
+  const validItems = formData.items.filter((item) => item.product_id)
 
   if (validItems.length === 0) {
-    return ElMessage.warning('请至少选择一件真实的商品')
+    return ElMessage.warning('请至少添加一行商品')
   }
 
-  const invalidPriceItem = validItems.find(i => i.actual_price === undefined || i.actual_price === null || i.actual_price < 0)
+  const invalidPriceItem = validItems.find((i) => i.actual_price === undefined || i.actual_price === null || i.actual_price < 0)
   if (invalidPriceItem) {
-    return ElMessage.warning(`商品【${invalidPriceItem.product_name}】的售价无效，请检查！`)
+    return ElMessage.warning(`商品【${invalidPriceItem.product_name}】单价无效，请检查后重试`) 
   }
 
   if (wizardStore.orderType === 'retail') {
-    const overSells = validItems.filter(i => i.qty > (i.stock_quantity || 0))
+    const overSells = validItems.filter((i) => i.qty > (i.stock_quantity || 0))
     if (overSells.length > 0) {
-      const names = overSells.map(i => i.product_name).join('、')
+      const names = overSells.map((i) => i.product_name).join('、')
       ElMessageBox.confirm(
-        `以下商品当前库存不足：\n${names}\n\n强行开单可能导致系统库存变为负数，是否确认继续？`,
-        '库存超卖警告',
-        { type: 'warning', confirmButtonText: '强行开单', cancelButtonText: '返回修改' }
+        `以下商品库存不足：${names}。继续提交将形成超卖记录，确认继续吗？`,
+        '库存校验提醒',
+        { type: 'warning', confirmButtonText: '继续提交', cancelButtonText: '返回修改' }
       ).then(() => {
         proceedToNext(validItems)
       }).catch(() => {})
@@ -251,13 +266,15 @@ const goNext = () => {
 }
 
 const proceedToNext = (validItems) => {
-  wizardStore.items = validItems
+  wizardStore.items = validItems.map((item) => ({ ...item }))
+  wizardStore.setCurrentStep(4)
+  save()
   router.push('/sales/wizard/step4')
 }
 
 onMounted(async () => {
   if (!wizardStore.customerInfo) {
-    ElMessage.warning('客户信息丢失，请重新选择')
+    ElMessage.warning('请先完成客户信息填写')
     router.push('/sales/wizard/step2')
     return
   }

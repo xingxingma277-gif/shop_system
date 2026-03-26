@@ -1,6 +1,6 @@
 <template>
   <div class="step-container">
-    <h3 class="step-title">第二步：完善客户与单据信息</h3>
+    <h3 class="step-title">第二步：选择客户</h3>
 
     <el-form label-width="120px" class="step-form">
       <el-form-item label="选择客户" required>
@@ -25,27 +25,37 @@
         </div>
       </el-form-item>
 
-      <el-form-item label="拿货人 (Buyer)" v-if="selectedCustomerType === 'company'">
+      <el-form-item label="拿货人" v-if="selectedCustomerType === 'company'">
         <div style="display: flex; gap: 10px; width: 100%;">
-          <el-select v-model="formData.buyerId" placeholder="请选择具体拿货人（可选）" style="flex: 1;" clearable>
+          <el-select
+            v-model="formData.buyerId"
+            placeholder="请选择拿货人（可选）"
+            style="flex: 1;"
+            clearable
+            @change="handleBuyerChange"
+          >
             <el-option v-for="b in buyerOptions" :key="b.id" :label="b.name" :value="b.id" />
           </el-select>
           <el-button type="primary" plain @click="showBuyerDialog = true">+ 新增拿货人</el-button>
         </div>
       </el-form-item>
 
-      <el-form-item label="项目/备注">
+      <el-form-item label="项目">
+        <el-input v-model="formData.project" placeholder="请输入项目名称（可选）" />
+      </el-form-item>
+
+      <el-form-item label="备注">
         <el-input
           type="textarea"
-          v-model="formData.projectRemarks"
-          placeholder="请输入项目名称、发货要求或其他备注信息（可选）"
+          v-model="formData.remark"
+          placeholder="请输入发货要求或其他备注信息（可选）"
           :rows="3"
         />
       </el-form-item>
 
       <div class="step-actions">
-        <el-button size="large" @click="goPrev">返回修改类型</el-button>
-        <el-button type="primary" size="large" @click="goNext">下一步：添加商品与核价</el-button>
+        <el-button size="large" @click="goPrev">返回单据类型</el-button>
+        <el-button type="primary" size="large" @click="goNext">下一步：添加商品</el-button>
       </div>
     </el-form>
 
@@ -67,16 +77,18 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useSaleWizardStore } from '../../../stores/saleWizard'
 import { useCatalogStore } from '../../../stores/catalog'
+import { useSaleWizardDraft } from '../../../composables/useSaleWizardDraft'
 import http from '../../../api/http'
 
 const router = useRouter()
 const wizardStore = useSaleWizardStore()
 const catalog = useCatalogStore()
+const { save } = useSaleWizardDraft(wizardStore)
 
 const selectedCustomerType = ref('')
 const buyerOptions = ref([])
@@ -84,12 +96,28 @@ const buyerOptions = ref([])
 const formData = reactive({
   customer_id: wizardStore.customerInfo?.id || null,
   buyerId: wizardStore.buyerId || null,
-  projectRemarks: wizardStore.projectRemarks || ''
+  project: wizardStore.project || '',
+  remark: wizardStore.remark || ''
 })
 
 const showBuyerDialog = ref(false)
 const isSavingBuyer = ref(false)
 const newBuyer = reactive({ name: '', phone: '' })
+
+watch(
+  () => [formData.customer_id, formData.buyerId, formData.project, formData.remark],
+  () => {
+    const customer = catalog.customers.find((c) => c.id === formData.customer_id) || null
+    wizardStore.customerInfo = customer
+    wizardStore.buyerId = formData.buyerId
+    wizardStore.buyerName = buyerOptions.value.find((b) => b.id === formData.buyerId)?.name || ''
+    wizardStore.project = formData.project
+    wizardStore.remark = formData.remark
+    wizardStore.setCurrentStep(2)
+    save()
+  },
+  { deep: true }
+)
 
 const onSearchCustomers = async (q) => {
   await catalog.searchCustomers(q || '')
@@ -97,7 +125,8 @@ const onSearchCustomers = async (q) => {
 
 const handleCustomerChange = async (customerId) => {
   formData.buyerId = null
-  const customer = catalog.customers.find(c => c.id === customerId)
+  wizardStore.buyerName = ''
+  const customer = catalog.customers.find((c) => c.id === customerId)
   if (customer) {
     selectedCustomerType.value = customer.type || 'company'
     if (selectedCustomerType.value === 'company') {
@@ -105,18 +134,21 @@ const handleCustomerChange = async (customerId) => {
         const res = await http.get(`/api/customers/${customerId}/contacts`)
         buyerOptions.value = res.data.items || res.data
       } catch (e) {
-        console.error('获取拿货人失败', e)
+        buyerOptions.value = []
       }
+    } else {
+      buyerOptions.value = []
     }
   }
 }
 
-// ★ 跳转到客户管理页新建
+const handleBuyerChange = (buyerId) => {
+  wizardStore.buyerName = buyerOptions.value.find((b) => b.id === buyerId)?.name || ''
+  save()
+}
+
 const goToCustomerPage = () => {
-  // 先把当前填了一半的数据保存到 Pinia 仓库，防止跳回来时丢失
-  wizardStore.buyerId = formData.buyerId
-  wizardStore.projectRemarks = formData.projectRemarks
-  // 带着任务去客户页
+  save()
   router.push({ path: '/customers', query: { from: 'sale_wizard', action: 'create' } })
 }
 
@@ -133,11 +165,13 @@ const submitNewBuyer = async () => {
     const createdBuyer = res.data
     buyerOptions.value.push(createdBuyer)
     formData.buyerId = createdBuyer.id
+    wizardStore.buyerName = createdBuyer.name
 
-    ElMessage.success('拿货人添加成功！')
+    ElMessage.success('拿货人添加成功')
     showBuyerDialog.value = false
     newBuyer.name = ''
     newBuyer.phone = ''
+    save()
   } catch (error) {
     ElMessage.error(error?.response?.data?.detail || '添加拿货人失败')
   } finally {
@@ -146,28 +180,26 @@ const submitNewBuyer = async () => {
 }
 
 const goPrev = () => {
+  wizardStore.setCurrentStep(1)
+  save()
   router.push('/sales/wizard/step1')
 }
 
 const goNext = () => {
   if (!formData.customer_id) {
-    ElMessage.warning('请先选择交易客户')
+    ElMessage.warning('请先选择客户')
     return
   }
 
-  const customer = catalog.customers.find(c => c.id === formData.customer_id)
-  wizardStore.customerInfo = customer
-  wizardStore.buyerId = formData.buyerId
-  wizardStore.projectRemarks = formData.projectRemarks
-
+  wizardStore.setCurrentStep(3)
+  save()
   router.push('/sales/wizard/step3')
 }
 
 onMounted(async () => {
   await catalog.searchCustomers('')
-  // 如果是从客户管理页创建完跳回来的，或者返回上一步的，把拿货人列表拉出来
   if (formData.customer_id) {
-    handleCustomerChange(formData.customer_id)
+    await handleCustomerChange(formData.customer_id)
   }
 })
 </script>
