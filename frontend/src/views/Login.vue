@@ -1,7 +1,7 @@
 <template>
   <div style="max-width:420px;margin:60px auto;">
     <el-card>
-      <template #header><b>管理员登录</b></template>
+      <template #header><b>系统登录</b></template>
       <el-form label-width="90px">
         <el-form-item label="用户名"><el-input v-model="form.username" /></el-form-item>
         <el-form-item label="密码"><el-input v-model="form.password" type="password" show-password /></el-form-item>

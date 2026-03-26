@@ -12,7 +12,7 @@
         <el-form-item label="单据类型" required>
           <el-radio-group v-model="form.order_stage">
             <el-radio-button label="QUOTE">报价单 (暂不扣库存)</el-radio-button>
-            <el-radio-button label="SALE_CONFIRMED">直接销售清单</el-radio-button>
+            <el-radio-button label="SALE_CONFIRMED">销售单</el-radio-button>
           </el-radio-group>
         </el-form-item>
 

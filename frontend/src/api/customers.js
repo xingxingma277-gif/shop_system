@@ -21,11 +21,11 @@ export function deleteCustomer(id) {
 }
 
 export function listBuyers(customerId) {
-  return http.get(`/api/customers/${customerId}/buyers`).then((r) => r.data)
+  return http.get(`/api/customers/${customerId}/contacts`).then((r) => r.data?.items || r.data)
 }
 
 export function createBuyer(customerId, payload) {
-  return http.post(`/api/customers/${customerId}/buyers`, payload).then((r) => r.data)
+  return http.post(`/api/customers/${customerId}/contacts`, payload).then((r) => r.data)
 }
 
 export function getCustomerProductPriceHistory(customerId, productId, params = {}) {

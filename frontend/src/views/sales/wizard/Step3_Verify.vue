@@ -2,13 +2,15 @@
   <div class="step-container">
     <el-alert
       v-if="wizardStore.orderType === 'quote'"
-      title="当前为【报价单】模式，生成的单据仅作报价使用，不会扣减系统库存。"
-      type="info" show-icon style="margin-bottom: 20px;"
+      title="当前为报价单，仅作报价参考，不会扣减库存。"
+      type="info"
+      show-icon
+      style="margin-bottom: 20px;"
     />
 
     <div class="step-header">
-      <h3 class="step-title">第三步：添加商品与核价</h3>
-      <el-button type="primary" plain @click="addRow">+ 添加一行商品</el-button>
+      <h3 class="step-title">第三步：添加商品</h3>
+      <el-button type="primary" plain @click="addRow">+ 添加商品</el-button>
     </div>
 
     <el-table
@@ -21,11 +23,12 @@
     >
       <el-table-column type="index" label="序号" width="60" align="center" fixed="left" />
 
-      <el-table-column label="选择商品" min-width="260" fixed="left">
+      <el-table-column label="选择商品" min-width="240" fixed="left">
         <template #default="{ row, $index }">
           <el-select
             v-model="row.product_id"
-            filterable remote
+            filterable
+            remote
             :remote-method="onSearchProducts"
             placeholder="拼音/名称搜索"
             style="width: 100%;"
@@ -51,43 +54,47 @@
 
       <el-table-column label="库存" width="100" align="center">
         <template #default="{ row }">
-          <span :class="{'stock-warning': wizardStore.orderType === 'retail' && (row.qty > row.stock_quantity)}">
-            {{ row.stock_quantity !== undefined ? row.stock_quantity : '-' }}
+          <span :class="{ 'stock-warning': wizardStore.orderType === 'retail' && row.qty > row.stock_quantity }">
+            {{ row.stock_quantity ?? '-' }}
           </span>
         </template>
       </el-table-column>
 
-      <el-table-column label="历史拿货价" width="120" align="right">
+      <el-table-column label="最近成交价" min-width="220">
         <template #default="{ row }">
-          <span v-if="row.loadingHistory" class="loading-text">查询中...</span>
-          <span v-else-if="row.last_price !== null" class="history-price" title="上次拿货价">
-            ¥ {{ row.last_price }}
-          </span>
-          <span v-else style="color: #c0c4cc;">无记录</span>
+          <div class="price-cell">
+            <span v-if="row.loadingHistory" class="loading-text">查询中...</span>
+            <template v-else-if="row.last_price !== null && row.last_price !== undefined">
+              <span class="history-price">¥ {{ Number(row.last_price).toFixed(2) }}</span>
+              <span class="history-sub">{{ row.last_sale_date ? formatDate(row.last_sale_date) : '时间未知' }}</span>
+              <el-button link type="primary" @click="openHistoryDialog(row)">查看历史记录</el-button>
+            </template>
+            <span v-else style="color: #c0c4cc;">暂无历史成交</span>
+          </div>
         </template>
       </el-table-column>
 
-      <el-table-column label="开单数量" width="140">
+      <el-table-column label="数量" width="130">
         <template #default="{ row }">
           <el-input-number v-model="row.qty" :min="1" @change="calculateTotal" style="width: 100%;" />
         </template>
       </el-table-column>
 
-      <el-table-column label="实际单价" width="140">
+      <el-table-column label="单价" width="130">
         <template #default="{ row }">
           <el-input-number v-model="row.actual_price" :min="0" :precision="2" :step="1" @change="calculateTotal" style="width: 100%;" />
         </template>
       </el-table-column>
 
-      <el-table-column label="金额小计" width="130" align="right">
+      <el-table-column label="小计" width="130" align="right">
         <template #default="{ row }">
           <span class="highlight-amount">¥ {{ ((row.qty || 0) * (row.actual_price || 0)).toFixed(2) }}</span>
         </template>
       </el-table-column>
 
-      <el-table-column label="行备注" min-width="180">
+      <el-table-column label="备注" min-width="160">
         <template #default="{ row }">
-          <el-input v-model="row.remark" placeholder="本行特殊要求..." />
+          <el-input v-model="row.remark" placeholder="本行说明（可选）" />
         </template>
       </el-table-column>
 
@@ -100,46 +107,96 @@
 
     <div class="summary-section">
       <div class="summary-text">
-        <span>整单合计金额：</span>
+        <span>整单金额：</span>
         <span class="total-amount">¥ {{ formData.totalAmount.toFixed(2) }}</span>
       </div>
     </div>
 
     <div class="step-actions">
-      <el-button size="large" @click="goPrev">返回修改客户</el-button>
-      <el-button type="primary" size="large" @click="goNext">下一步：确认结算与提交</el-button>
+      <el-button size="large" @click="goPrev">返回选择客户</el-button>
+      <el-button type="primary" size="large" @click="goNext">下一步：确认订单</el-button>
     </div>
+
+    <el-dialog v-model="historyDialog.visible" width="760px" :title="`历史成交记录 - ${historyDialog.productName || ''}`">
+      <el-table :data="historyDialog.rows" border size="small" max-height="420">
+        <el-table-column prop="sale_no" label="单号" min-width="140" />
+        <el-table-column prop="sale_date" label="成交时间" min-width="160">
+          <template #default="{ row }">{{ formatDate(row.sale_date || row.date) }}</template>
+        </el-table-column>
+        <el-table-column prop="order_type" label="单据类型" min-width="110">
+          <template #default="{ row }">{{ row.order_type === 'quote' ? '报价单' : '销售单' }}</template>
+        </el-table-column>
+        <el-table-column prop="unit_price" label="成交价" width="120">
+          <template #default="{ row }">¥ {{ Number(row.unit_price || 0).toFixed(2) }}</template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import dayjs from 'dayjs'
+import { reactive, ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useSaleWizardStore } from '../../../stores/saleWizard'
 import { useCatalogStore } from '../../../stores/catalog'
-import http from '../../../api/http'
+import { useSaleWizardDraft } from '../../../composables/useSaleWizardDraft'
+import { getLatestDealPrice, getPricingHistory } from '../../../api/pricing'
 
 const router = useRouter()
 const wizardStore = useSaleWizardStore()
 const catalog = useCatalogStore()
+const { save } = useSaleWizardDraft(wizardStore)
 
 const highlightRowIndex = ref(-1)
+const historyDialog = reactive({ visible: false, rows: [], productName: '' })
 
 const formData = reactive({
-  items: wizardStore.items.length > 0 ? [...wizardStore.items] : [{ product_id: null, qty: 1 }],
+  items: wizardStore.items.length > 0 ? wizardStore.items.map((item) => ({ ...item })) : [{ product_id: null, qty: 1, actual_price: 0 }],
   totalAmount: wizardStore.totalAmount || 0
 })
 
-const tableRowClassName = ({ rowIndex }) => {
-  if (rowIndex === highlightRowIndex.value) {
-    return 'duplicate-row-flash'
-  }
-  return ''
-}
+watch(
+  () => formData.items,
+  () => {
+    wizardStore.items = formData.items.map((item) => ({ ...item }))
+    save()
+  },
+  { deep: true }
+)
 
-const onSearchProducts = async (query) => {
-  await catalog.searchProducts(query || '')
+watch(
+  () => formData.totalAmount,
+  (val) => {
+    wizardStore.totalAmount = val
+    save()
+  }
+)
+
+const tableRowClassName = ({ rowIndex }) => (rowIndex === highlightRowIndex.value ? 'duplicate-row-flash' : '')
+const onSearchProducts = async (query) => catalog.searchProducts(query || '')
+const formatDate = (v) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-')
+
+const loadLatestPrice = async (row, productId) => {
+  if (!wizardStore.customerInfo?.id) return
+  const latest = await getLatestDealPrice({ customer_id: wizardStore.customerInfo.id, product_id: productId })
+  if (!latest) {
+    row.last_price = null
+    row.last_sale_date = null
+    row.last_sale_no = null
+    row.source_order_type = null
+    return
+  }
+
+  row.last_price = latest.last_price
+  row.last_sale_date = latest.last_sale_date
+  row.last_sale_no = latest.last_sale_no
+  row.source_order_type = latest.source_order_type
+
+  if (latest.last_price !== null && latest.source_order_type !== 'quote') {
+    row.actual_price = latest.last_price
+  }
 }
 
 const handleProductChange = async (productId, row, index) => {
@@ -147,102 +204,80 @@ const handleProductChange = async (productId, row, index) => {
 
   const duplicateIndex = formData.items.findIndex((item, i) => i !== index && item.product_id === productId)
   if (duplicateIndex !== -1) {
-    ElMessage.warning(`该商品已在第 ${duplicateIndex + 1} 行，已为您高亮显示，请直接修改数量！`)
+    ElMessage.warning(`商品已在第 ${duplicateIndex + 1} 行，请直接调整原行数量。`)
     row.product_id = null
-
     highlightRowIndex.value = duplicateIndex
     setTimeout(() => {
-      if (highlightRowIndex.value === duplicateIndex) {
-        highlightRowIndex.value = -1
-      }
+      if (highlightRowIndex.value === duplicateIndex) highlightRowIndex.value = -1
     }, 3000)
-
+    save()
     return
   }
 
-  const product = catalog.products.find(p => p.id === productId)
+  const product = catalog.products.find((p) => p.id === productId)
   if (product) {
     row.product_name = product.name
     row.spec = product.spec
     row.unit = product.unit
     row.stock_quantity = product.stock_quantity || 0
-    row.standard_price = product.standard_price || 0
     row.actual_price = product.standard_price || 0
   }
 
   row.loadingHistory = true
-  try {
-    const res = await http.get('/api/pricing/last-price', {
-      params: {
-        customer_id: wizardStore.customerInfo.id,
-        product_id: productId
-      }
-    })
+  await loadLatestPrice(row, productId)
+  row.loadingHistory = false
 
-    if (res.data && res.data.price !== null && res.data.price !== undefined) {
-      row.last_price = res.data.price
-      row.actual_price = res.data.price
-      ElMessage.success(`已为您自动带入【${row.product_name}】的历史拿货价: ￥${row.last_price}`)
-    } else {
-      row.last_price = null
-    }
-  } catch (error) {
-    row.last_price = null
-  } finally {
-    row.loadingHistory = false
-    calculateTotal()
-  }
+  calculateTotal()
+  save()
+}
+
+const openHistoryDialog = async (row) => {
+  if (!wizardStore.customerInfo?.id || !row.product_id) return
+  const res = await getPricingHistory({ customer_id: wizardStore.customerInfo.id, product_id: row.product_id, page: 1, page_size: 30 })
+  historyDialog.rows = res.items || []
+  historyDialog.productName = row.product_name
+  historyDialog.visible = true
 }
 
 const addRow = () => {
   formData.items.push({ product_id: null, qty: 1, actual_price: 0 })
+  save()
 }
 
 const removeRow = (index) => {
   formData.items.splice(index, 1)
-  if (formData.items.length === 0) {
-    addRow()
-  }
+  if (formData.items.length === 0) addRow()
   calculateTotal()
+  save()
 }
 
 const calculateTotal = () => {
-  let total = 0
-  formData.items.forEach(item => {
-    total += (item.qty || 0) * (item.actual_price || 0)
-  })
-  formData.totalAmount = total
-  wizardStore.totalAmount = total
+  formData.totalAmount = formData.items.reduce((sum, item) => sum + (item.qty || 0) * (item.actual_price || 0), 0)
+  save()
 }
 
 const goPrev = () => {
-  wizardStore.items = [...formData.items]
+  wizardStore.setCurrentStep(2)
+  save()
   router.push('/sales/wizard/step2')
 }
 
 const goNext = () => {
-  const validItems = formData.items.filter(item => item.product_id)
+  const validItems = formData.items.filter((item) => item.product_id)
+  if (validItems.length === 0) return ElMessage.warning('请至少添加一行商品')
 
-  if (validItems.length === 0) {
-    return ElMessage.warning('请至少选择一件真实的商品')
-  }
-
-  const invalidPriceItem = validItems.find(i => i.actual_price === undefined || i.actual_price === null || i.actual_price < 0)
-  if (invalidPriceItem) {
-    return ElMessage.warning(`商品【${invalidPriceItem.product_name}】的售价无效，请检查！`)
-  }
+  const invalidPriceItem = validItems.find((i) => i.actual_price === undefined || i.actual_price === null || i.actual_price < 0)
+  if (invalidPriceItem) return ElMessage.warning(`商品【${invalidPriceItem.product_name}】单价无效，请检查后重试`)
 
   if (wizardStore.orderType === 'retail') {
-    const overSells = validItems.filter(i => i.qty > (i.stock_quantity || 0))
+    const overSells = validItems.filter((i) => i.qty > (i.stock_quantity || 0))
     if (overSells.length > 0) {
-      const names = overSells.map(i => i.product_name).join('、')
+      const names = overSells.map((i) => i.product_name).join('、')
       ElMessageBox.confirm(
-        `以下商品当前库存不足：\n${names}\n\n强行开单可能导致系统库存变为负数，是否确认继续？`,
-        '库存超卖警告',
-        { type: 'warning', confirmButtonText: '强行开单', cancelButtonText: '返回修改' }
-      ).then(() => {
-        proceedToNext(validItems)
-      }).catch(() => {})
+        `商品 ${names} 当前库存不足。若继续提交将产生超卖记录，是否继续？`,
+        '库存提醒',
+        { type: 'warning', confirmButtonText: '继续', cancelButtonText: '返回修改' }
+      ).then(() => proceedToNext(validItems)).catch(() => {})
       return
     }
   }
@@ -251,13 +286,15 @@ const goNext = () => {
 }
 
 const proceedToNext = (validItems) => {
-  wizardStore.items = validItems
+  wizardStore.items = validItems.map((item) => ({ ...item }))
+  wizardStore.setCurrentStep(4)
+  save()
   router.push('/sales/wizard/step4')
 }
 
 onMounted(async () => {
   if (!wizardStore.customerInfo) {
-    ElMessage.warning('客户信息丢失，请重新选择')
+    ElMessage.warning('请先完成客户信息填写')
     router.push('/sales/wizard/step2')
     return
   }
@@ -271,11 +308,12 @@ onMounted(async () => {
 .step-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .step-title { margin: 0; color: #303133; font-weight: 600; }
 .items-table { margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05); }
-
 .stock-warning { color: #f56c6c; font-weight: bold; }
-.history-price { color: #409eff; font-size: 13px; font-weight: bold; }
+.history-price { color: #409eff; font-weight: bold; }
+.history-sub { font-size: 12px; color: #909399; }
 .loading-text { color: #909399; font-size: 12px; }
 .highlight-amount { color: #f56c6c; font-weight: bold; font-size: 15px; }
+.price-cell { display: flex; flex-direction: column; line-height: 1.4; }
 
 :deep(.el-table .duplicate-row-flash) {
   --el-table-tr-bg-color: #fdf6ec !important;

@@ -2,10 +2,11 @@
   <div class="wizard-layout">
     <el-card shadow="never" class="wizard-header">
       <el-steps :active="currentStepIndex" finish-status="success" align-center>
-        <el-step title="业务类型" description="销售或报价" />
-        <el-step title="客户信息" description="客户与拿货人" />
-        <el-step title="商品与核价" description="库存与历史价" />
-        <el-step title="结算确认" description="生成最终单据" />
+        <el-step title="单据类型" />
+        <el-step title="客户信息" />
+        <el-step title="商品信息" />
+        <el-step title="确认订单" />
+        <el-step title="收款提交" />
       </el-steps>
     </el-card>
 
@@ -20,14 +21,66 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
+import { useSaleWizardStore } from '../../../stores/saleWizard'
 
 const route = useRoute()
-const stepMap = { 'step1': 0, 'step2': 1, 'step3': 2, 'step4': 3 }
+const router = useRouter()
+const wizardStore = useSaleWizardStore()
+const promptHandled = ref(false)
+
+const stepMap = { step1: 0, step2: 1, step3: 2, step4: 3, step5: 4 }
 const currentStepIndex = computed(() => {
   const pathNode = route.path.split('/').pop()
   return stepMap[pathNode] || 0
+})
+
+watch(
+  () => route.path,
+  () => {
+    wizardStore.setCurrentStep(currentStepIndex.value + 1)
+  },
+  { immediate: true }
+)
+
+onMounted(async () => {
+  wizardStore.loadDraftFromLocal()
+
+  const isStep1 = route.path.endsWith('/sales/wizard/step1') || route.path.endsWith('/step1')
+  if (!isStep1 || promptHandled.value || !wizardStore.hasMeaningfulDraft()) return
+
+  promptHandled.value = true
+
+  try {
+    await ElMessageBox.confirm('检测到未完成的开单草稿，是否继续？', '恢复开单', {
+      confirmButtonText: '继续开单',
+      cancelButtonText: '重新开单',
+      distinguishCancelAndClose: true,
+      type: 'info'
+    })
+    const target = `/sales/wizard/step${wizardStore.currentStep || 1}`
+    if (route.path !== target) router.replace(target)
+  } catch (error) {
+    wizardStore.clearDraft()
+  }
+})
+
+onBeforeRouteLeave(async (to) => {
+  if (to.path.startsWith('/sales/wizard')) return true
+  if (wizardStore.isSubmitted || !wizardStore.hasMeaningfulDraft()) return true
+
+  try {
+    await ElMessageBox.confirm('当前开单尚未提交，确认离开？', '离开确认', {
+      confirmButtonText: '确认离开',
+      cancelButtonText: '继续开单',
+      type: 'warning'
+    })
+    return true
+  } catch (error) {
+    return false
+  }
 })
 </script>
 
