@@ -1,27 +1,45 @@
 <template>
   <el-card v-if="sale">
     <template #header>
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
-        <div style="font-weight:700;display:flex;align-items:center;gap:8px;">
-          订单详情
-          <el-tag :type="stageTag(sale.order_stage)">{{ stageText(sale.order_stage) }}</el-tag>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+          <div style="font-weight:700;display:flex;align-items:center;gap:8px;">
+            订单详情
+            <el-tag :type="stageTag(sale.order_stage)">{{ stageText(sale.order_stage) }}</el-tag>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <el-button v-if="backLabel" @click="backToOrigin">{{ backLabel }}</el-button>
+            <el-button @click="continueCreate">继续开单</el-button>
+            <el-button type="primary" plain @click="createForCurrentCustomer">再为当前客户开一单</el-button>
+            <el-button v-if="mainAction" type="primary" @click="mainAction.handler">{{ mainAction.label }}</el-button>
+            <el-dropdown @command="onSecondaryCommand">
+              <el-button>更多操作<el-icon class="el-icon--right"><arrow-down /></el-icon></el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="print_quote">导出报价单</el-dropdown-item>
+                  <el-dropdown-item command="print_sale" :disabled="sale.order_stage === 'QUOTE'">导出销售单</el-dropdown-item>
+                  <el-dropdown-item command="print_delivery" :disabled="sale.order_stage === 'QUOTE'">导出送货单</el-dropdown-item>
+                  <el-dropdown-item command="profile">查看客户档案</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <el-button v-if="backLabel" @click="backToOrigin">{{ backLabel }}</el-button>
-          <el-button v-if="mainAction" type="primary" @click="mainAction.handler">{{ mainAction.label }}</el-button>
-          <el-dropdown @command="onSecondaryCommand">
-            <el-button>更多操作<el-icon class="el-icon--right"><arrow-down /></el-icon></el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="print_quote">导出报价单</el-dropdown-item>
-                <el-dropdown-item command="print_sale" :disabled="sale.order_stage === 'QUOTE'">导出销售单</el-dropdown-item>
-                <el-dropdown-item command="print_delivery" :disabled="sale.order_stage === 'QUOTE'">导出送货单</el-dropdown-item>
-                <el-dropdown-item command="continue">继续开单</el-dropdown-item>
-                <el-dropdown-item command="profile">查看客户档案</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
+
+        <el-alert
+          v-if="showSubmitSuccess"
+          title="开单成功，您可以继续处理下一张单据。"
+          type="success"
+          :closable="false"
+          show-icon
+        >
+          <template #default>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <el-button size="small" @click="continueCreate">继续开单</el-button>
+              <el-button size="small" type="primary" plain @click="createForCurrentCustomer">再为当前客户开一单</el-button>
+            </div>
+          </template>
+        </el-alert>
       </div>
     </template>
 
@@ -121,10 +139,12 @@ import { ArrowDown } from '@element-plus/icons-vue'
 import { convertToSale, exportSaleExcel, generateDelivery, getSaleApi, getSalePaymentRecords } from '../api/sales'
 import { formatDateTime, money } from '../utils/format'
 import { useDictsStore } from '../stores/dicts'
+import { useSaleWizardStore } from '../stores/saleWizard'
 
 const route = useRoute()
 const router = useRouter()
 const dicts = useDictsStore()
+const wizardStore = useSaleWizardStore()
 const paymentMethods = computed(() => dicts.paymentMethods)
 
 const sale = ref(null)
@@ -134,6 +154,7 @@ const deliveryDialog = ref(false)
 const convertForm = reactive({ settlement_status: 'UNPAID', payment_method: null, paid_amount: 0, payment_note: '', needs_delivery: false, receiver_name: '', receiver_phone: '', receiver_address: '' })
 const deliveryForm = reactive({ receiver_name: '', receiver_phone: '', receiver_address: '', delivery_note: '' })
 
+const showSubmitSuccess = computed(() => route.query.from_submit === '1')
 const fmt = (v) => formatDateTime(v, 'YYYY-MM-DD HH:mm')
 const statusText = (v) => ({ unpaid: '未结清', partial: '部分结清', paid: '已结清', UNPAID: '未结清', PARTIAL: '部分结清', PAID: '已结清' }[v] || '-')
 const statusTag = (v) => ({ unpaid: 'danger', partial: 'warning', paid: 'success', UNPAID: 'danger', PARTIAL: 'warning', PAID: 'success' }[v] || 'info')
@@ -158,6 +179,33 @@ const mainAction = computed(() => {
   return null
 })
 
+function continueCreate() {
+  wizardStore.clearDraft()
+  router.push('/sales/wizard/step1')
+}
+
+function createForCurrentCustomer() {
+  wizardStore.clearDraft()
+  wizardStore.customerInfo = {
+    id: sale.value.customer_id,
+    name: sale.value.customer_name,
+    type: sale.value.customer_type || 'company'
+  }
+  wizardStore.buyerId = sale.value.buyer_id || null
+  wizardStore.buyerName = sale.value.buyer_name || ''
+  wizardStore.items = []
+  wizardStore.totalAmount = 0
+  wizardStore.settlement = {
+    settlement_status: 'PAID',
+    paid_amount: 0,
+    payment_method: 'bank_transfer',
+    payment_note: ''
+  }
+  wizardStore.setCurrentStep(2)
+  wizardStore.saveDraftToLocal()
+  router.push('/sales/wizard/step2')
+}
+
 function backToOrigin() {
   if (route.query.return_to === 'transactions') {
     const query = {}
@@ -173,7 +221,7 @@ function backToOrigin() {
 }
 
 function paymentMethodText(v) {
-  const f = dicts.paymentMethods.find(m => m.value === v)
+  const f = dicts.paymentMethods.find((m) => m.value === v)
   return f ? f.label : (v || '-')
 }
 
@@ -243,7 +291,6 @@ async function downloadDoc(docType) {
 }
 
 function onSecondaryCommand(cmd) {
-  if (cmd === 'continue') router.push('/new-sale')
   if (cmd === 'profile') router.push(`/customers/${sale.value.customer_id}`)
   if (cmd === 'print_quote') downloadDoc('quote')
   if (cmd === 'print_sale') downloadDoc('sale')

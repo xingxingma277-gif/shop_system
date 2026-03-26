@@ -1,55 +1,55 @@
 <template>
   <div class="step-container">
-    <h3 class="step-title">第一步：请选择业务类型</h3>
+    <h3 class="step-title">第一步：选择单据类型</h3>
 
     <div class="type-cards">
       <el-card
-        :class="['type-card', formData.orderType === 'retail' ? 'active' : '']"
+        :class="['type-card', wizardStore.orderType === 'retail' ? 'active' : '']"
         @click="selectType('retail')"
         shadow="hover"
       >
-        <div class="card-icon">🛒</div>
-        <h4>直接销售单</h4>
-        <p>确认后将直接扣减仓库实际库存，并生成财务应收账款。</p>
+        <div class="card-icon">🧾</div>
+        <h4>销售单</h4>
+        <p>确认后扣减库存，并生成应收记录</p>
       </el-card>
 
       <el-card
-        :class="['type-card', formData.orderType === 'quote' ? 'active' : '']"
+        :class="['type-card', wizardStore.orderType === 'quote' ? 'active' : '']"
         @click="selectType('quote')"
         shadow="hover"
       >
         <div class="card-icon">📄</div>
-        <h4>生成报价单</h4>
-        <p>仅用于给客户提供价格明细，不会扣减库存，后续可转为销售单。</p>
+        <h4>报价单</h4>
+        <p>仅用于报价，不扣减库存</p>
       </el-card>
     </div>
 
     <div class="step-actions" style="justify-content: center; margin-top: 40px;">
-      <el-button type="primary" size="large" @click="goNext" style="width: 200px;">
-        下一步：填写客户信息
+      <el-button type="primary" size="large" @click="goNext" style="width: 220px;">
+        下一步：选择客户
       </el-button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSaleWizardStore } from '../../../stores/saleWizard'
+import { useSaleWizardDraft } from '../../../composables/useSaleWizardDraft'
 
 const router = useRouter()
 const wizardStore = useSaleWizardStore()
-
-const formData = reactive({
-  orderType: wizardStore.orderType || 'retail'
-})
+const { save } = useSaleWizardDraft(wizardStore)
 
 const selectType = (type) => {
-  formData.orderType = type
+  wizardStore.orderType = type
+  wizardStore.setCurrentStep(1)
+  save()
 }
 
 const goNext = () => {
-  wizardStore.orderType = formData.orderType
+  wizardStore.setCurrentStep(2)
+  save()
   router.push('/sales/wizard/step2')
 }
 </script>

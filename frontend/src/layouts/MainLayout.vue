@@ -11,7 +11,7 @@
 
         <el-sub-menu index="sales_group">
           <template #title><el-icon><ShoppingCart /></el-icon><span>销售与客户</span></template>
-          <el-menu-item index="/sales/wizard">新建开单</el-menu-item>
+          <el-menu-item index="/sales/wizard">开单</el-menu-item>
           <el-menu-item index="/transactions">交易记录</el-menu-item>
           <el-menu-item index="/customers">客户档案</el-menu-item>
         </el-sub-menu>
