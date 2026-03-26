@@ -1,0 +1,180 @@
+<template>
+  <div class="step-container">
+    <h3 class="step-title">第二步：完善客户与单据信息</h3>
+
+    <el-form label-width="120px" class="step-form">
+      <el-form-item label="选择客户" required>
+        <div style="display: flex; gap: 10px; width: 100%;">
+          <el-select
+            v-model="formData.customer_id"
+            filterable
+            remote
+            :remote-method="onSearchCustomers"
+            placeholder="请输入拼音或名称搜索"
+            style="flex: 1;"
+            @change="handleCustomerChange"
+          >
+            <el-option v-for="c in catalog.customers" :key="c.id" :label="c.name" :value="c.id">
+              <span style="float: left">{{ c.name }}</span>
+              <span style="float: right; color: #8492a6; font-size: 13px">
+                {{ c.type === 'company' ? '🏢 公司' : '👤 个人' }}
+              </span>
+            </el-option>
+          </el-select>
+          <el-button type="success" plain @click="goToCustomerPage">+ 新建客户</el-button>
+        </div>
+      </el-form-item>
+
+      <el-form-item label="拿货人 (Buyer)" v-if="selectedCustomerType === 'company'">
+        <div style="display: flex; gap: 10px; width: 100%;">
+          <el-select v-model="formData.buyerId" placeholder="请选择具体拿货人（可选）" style="flex: 1;" clearable>
+            <el-option v-for="b in buyerOptions" :key="b.id" :label="b.name" :value="b.id" />
+          </el-select>
+          <el-button type="primary" plain @click="showBuyerDialog = true">+ 新增拿货人</el-button>
+        </div>
+      </el-form-item>
+
+      <el-form-item label="项目/备注">
+        <el-input
+          type="textarea"
+          v-model="formData.projectRemarks"
+          placeholder="请输入项目名称、发货要求或其他备注信息（可选）"
+          :rows="3"
+        />
+      </el-form-item>
+
+      <div class="step-actions">
+        <el-button size="large" @click="goPrev">返回修改类型</el-button>
+        <el-button type="primary" size="large" @click="goNext">下一步：添加商品与核价</el-button>
+      </div>
+    </el-form>
+
+    <el-dialog v-model="showBuyerDialog" title="新增拿货人" width="400px">
+      <el-form label-width="80px">
+        <el-form-item label="姓名" required>
+          <el-input v-model="newBuyer.name" placeholder="请输入拿货人姓名" />
+        </el-form-item>
+        <el-form-item label="电话">
+          <el-input v-model="newBuyer.phone" placeholder="请输入手机号（可选）" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showBuyerDialog = false">取消</el-button>
+        <el-button type="primary" @click="submitNewBuyer" :loading="isSavingBuyer">保存并选中</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup>
+import { reactive, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { useSaleWizardStore } from '../../../stores/saleWizard'
+import { useCatalogStore } from '../../../stores/catalog'
+import http from '../../../api/http'
+
+const router = useRouter()
+const wizardStore = useSaleWizardStore()
+const catalog = useCatalogStore()
+
+const selectedCustomerType = ref('')
+const buyerOptions = ref([])
+
+const formData = reactive({
+  customer_id: wizardStore.customerInfo?.id || null,
+  buyerId: wizardStore.buyerId || null,
+  projectRemarks: wizardStore.projectRemarks || ''
+})
+
+const showBuyerDialog = ref(false)
+const isSavingBuyer = ref(false)
+const newBuyer = reactive({ name: '', phone: '' })
+
+const onSearchCustomers = async (q) => {
+  await catalog.searchCustomers(q || '')
+}
+
+const handleCustomerChange = async (customerId) => {
+  formData.buyerId = null
+  const customer = catalog.customers.find(c => c.id === customerId)
+  if (customer) {
+    selectedCustomerType.value = customer.type || 'company'
+    if (selectedCustomerType.value === 'company') {
+      try {
+        const res = await http.get(`/api/customers/${customerId}/contacts`)
+        buyerOptions.value = res.data.items || res.data
+      } catch (e) {
+        console.error('获取拿货人失败', e)
+      }
+    }
+  }
+}
+
+// ★ 跳转到客户管理页新建
+const goToCustomerPage = () => {
+  // 先把当前填了一半的数据保存到 Pinia 仓库，防止跳回来时丢失
+  wizardStore.buyerId = formData.buyerId
+  wizardStore.projectRemarks = formData.projectRemarks
+  // 带着任务去客户页
+  router.push({ path: '/customers', query: { from: 'sale_wizard', action: 'create' } })
+}
+
+const submitNewBuyer = async () => {
+  if (!newBuyer.name) return ElMessage.warning('姓名不能为空')
+  isSavingBuyer.value = true
+  try {
+    const payload = {
+      name: newBuyer.name,
+      phone: newBuyer.phone || '未提供',
+      customer_id: formData.customer_id
+    }
+    const res = await http.post(`/api/customers/${formData.customer_id}/contacts`, payload)
+    const createdBuyer = res.data
+    buyerOptions.value.push(createdBuyer)
+    formData.buyerId = createdBuyer.id
+
+    ElMessage.success('拿货人添加成功！')
+    showBuyerDialog.value = false
+    newBuyer.name = ''
+    newBuyer.phone = ''
+  } catch (error) {
+    ElMessage.error(error?.response?.data?.detail || '添加拿货人失败')
+  } finally {
+    isSavingBuyer.value = false
+  }
+}
+
+const goPrev = () => {
+  router.push('/sales/wizard/step1')
+}
+
+const goNext = () => {
+  if (!formData.customer_id) {
+    ElMessage.warning('请先选择交易客户')
+    return
+  }
+
+  const customer = catalog.customers.find(c => c.id === formData.customer_id)
+  wizardStore.customerInfo = customer
+  wizardStore.buyerId = formData.buyerId
+  wizardStore.projectRemarks = formData.projectRemarks
+
+  router.push('/sales/wizard/step3')
+}
+
+onMounted(async () => {
+  await catalog.searchCustomers('')
+  // 如果是从客户管理页创建完跳回来的，或者返回上一步的，把拿货人列表拉出来
+  if (formData.customer_id) {
+    handleCustomerChange(formData.customer_id)
+  }
+})
+</script>
+
+<style scoped>
+.step-container { max-width: 600px; margin: 0 auto; padding-top: 40px; }
+.step-title { text-align: center; margin-bottom: 40px; color: #303133; font-weight: 600; }
+.step-form { background: #f8f9fa; padding: 40px 30px; border-radius: 8px; border: 1px solid #e4e7ed; }
+.step-actions { display: flex; justify-content: space-between; border-top: 1px solid #ebeef5; padding-top: 20px; margin-top: 20px; }
+</style>

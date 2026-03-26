@@ -1,10 +1,14 @@
 <template>
   <el-card shadow="never">
     <template #header>
-      <div class="card-header">
+      <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <div style="font-weight:700;">客户管理</div>
-        <div>
-          <el-input v-model="q" placeholder="搜索客户名" style="width: 260px;" @keyup.enter="fetchList" />
+        <div style="display: flex; align-items: center;">
+          <el-button v-if="route.query.from === 'sale_wizard'" type="warning" plain @click="goBackToWizard">
+            返回开单
+          </el-button>
+
+          <el-input v-model="q" placeholder="搜索客户名" style="width: 260px; margin-left: 12px;" @keyup.enter="fetchList" />
           <el-button style="margin-left:8px;" @click="fetchList">搜索</el-button>
           <el-button type="primary" style="margin-left:8px;" @click="openCreate">新增客户</el-button>
         </div>
@@ -13,7 +17,11 @@
 
     <el-table :data="rows" border>
       <el-table-column prop="name" label="名称" min-width="220" />
-      <el-table-column prop="type" label="类型" width="100" />
+      <el-table-column prop="type" label="类型" width="100">
+        <template #default="{ row }">
+          {{ row.type === 'company' ? '公司' : '个人' }}
+        </template>
+      </el-table-column>
       <el-table-column prop="contact_name" label="联系人" width="120" />
       <el-table-column prop="phone" label="电话" width="160" />
       <el-table-column prop="address" label="地址" min-width="240" />
@@ -83,12 +91,14 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router' // ★ 引入了 useRoute
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { createCustomer, deleteCustomer, deleteCustomerCheck, deleteCustomerRecords, listCustomers, updateCustomer } from '../api/customers'
 import { formatDateTime } from '../utils/format'
 
 const router = useRouter()
+const route = useRoute() // ★ 实例化路由信息对象
+
 const q = ref('')
 const page = ref(1)
 const pageSize = ref(20)
@@ -120,14 +130,29 @@ async function fetchList() {
 function openCreate(){ editing.value=false; editId.value=null; resetForm(); dialogOpen.value=true }
 function openEdit(row){ editing.value=true; editId.value=row.id; Object.assign(form,{name:row.name,type:row.type||'company',contact_name:row.contact_name||'',phone:row.phone||'',address:row.address||'',is_active:!!row.is_active}); dialogOpen.value=true }
 
+function goBackToWizard() {
+  router.push('/sales/wizard/step2')
+}
+
 async function save() {
   if (!form.name.trim()) return ElMessage.warning('请输入客户名称')
   saving.value = true
   try {
-    if (editing.value) await updateCustomer(editId.value, { ...form })
-    else await createCustomer({ ...form })
+    if (editing.value) {
+      await updateCustomer(editId.value, { ...form })
+    } else {
+      await createCustomer({ ...form })
+    }
     dialogOpen.value = false
     await fetchList()
+
+    // ★ 核心体验：如果是从开单向导来新建的，成功后自动送回开单页面
+    if (!editing.value && route.query.from === 'sale_wizard') {
+      ElMessage.success('客户建档成功，为您返回开单页面')
+      router.push('/sales/wizard/step2')
+    } else {
+      ElMessage.success(editing.value ? '保存成功' : '创建成功')
+    }
   } finally { saving.value = false }
 }
 
@@ -182,5 +207,11 @@ async function deleteAllAndCustomer() {
 
 function goProfile(row) { router.push(`/customers/${row.id}`) }
 
-onMounted(fetchList)
+onMounted(() => {
+  fetchList()
+  // ★ 核心体验：接收到 create 指令后，自动弹开新增弹窗
+  if (route.query.action === 'create') {
+    openCreate()
+  }
+})
 </script>
