@@ -44,7 +44,8 @@ const routes = [
           { path: 'step1', component: () => import('../views/sales/wizard/Step1_Customer.vue'), meta: { title: '选择单据类型', requiresAuth: true, permission: 'sale.manage' } },
           { path: 'step2', component: () => import('../views/sales/wizard/Step2_Items.vue'), meta: { title: '选择客户', requiresAuth: true, permission: 'sale.manage' } },
           { path: 'step3', component: () => import('../views/sales/wizard/Step3_Verify.vue'), meta: { title: '添加商品', requiresAuth: true, permission: 'sale.manage' } },
-          { path: 'step4', component: () => import('../views/sales/wizard/Step4_Checkout.vue'), meta: { title: '收款与提交', requiresAuth: true, permission: 'sale.manage' } }
+          { path: 'step4', component: () => import('../views/sales/wizard/Step4_Review.vue'), meta: { title: '确认订单', requiresAuth: true, permission: 'sale.manage' } },
+          { path: 'step5', component: () => import('../views/sales/wizard/Step5_Settlement.vue'), meta: { title: '结算并提交', requiresAuth: true, permission: 'sale.manage' } }
         ]
       },
 

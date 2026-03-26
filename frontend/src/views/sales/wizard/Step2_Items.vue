@@ -83,7 +83,7 @@ import { ElMessage } from 'element-plus'
 import { useSaleWizardStore } from '../../../stores/saleWizard'
 import { useCatalogStore } from '../../../stores/catalog'
 import { useSaleWizardDraft } from '../../../composables/useSaleWizardDraft'
-import http from '../../../api/http'
+import { createBuyer, listBuyers } from '../../../api/customers'
 
 const router = useRouter()
 const wizardStore = useSaleWizardStore()
@@ -123,22 +123,25 @@ const onSearchCustomers = async (q) => {
   await catalog.searchCustomers(q || '')
 }
 
+const loadBuyerOptions = async (customerId) => {
+  try {
+    buyerOptions.value = await listBuyers(customerId)
+  } catch (error) {
+    buyerOptions.value = []
+  }
+}
+
 const handleCustomerChange = async (customerId) => {
   formData.buyerId = null
   wizardStore.buyerName = ''
   const customer = catalog.customers.find((c) => c.id === customerId)
-  if (customer) {
-    selectedCustomerType.value = customer.type || 'company'
-    if (selectedCustomerType.value === 'company') {
-      try {
-        const res = await http.get(`/api/customers/${customerId}/contacts`)
-        buyerOptions.value = res.data.items || res.data
-      } catch (e) {
-        buyerOptions.value = []
-      }
-    } else {
-      buyerOptions.value = []
-    }
+  if (!customer) return
+
+  selectedCustomerType.value = customer.type || 'company'
+  if (selectedCustomerType.value === 'company') {
+    await loadBuyerOptions(customerId)
+  } else {
+    buyerOptions.value = []
   }
 }
 
@@ -156,18 +159,17 @@ const submitNewBuyer = async () => {
   if (!newBuyer.name) return ElMessage.warning('姓名不能为空')
   isSavingBuyer.value = true
   try {
-    const payload = {
+    const createdBuyer = await createBuyer(formData.customer_id, {
       name: newBuyer.name,
       phone: newBuyer.phone || '未提供',
       customer_id: formData.customer_id
-    }
-    const res = await http.post(`/api/customers/${formData.customer_id}/contacts`, payload)
-    const createdBuyer = res.data
+    })
+
     buyerOptions.value.push(createdBuyer)
     formData.buyerId = createdBuyer.id
     wizardStore.buyerName = createdBuyer.name
 
-    ElMessage.success('拿货人添加成功')
+    ElMessage.success('拿货人新增成功，已同步至客户档案')
     showBuyerDialog.value = false
     newBuyer.name = ''
     newBuyer.phone = ''
