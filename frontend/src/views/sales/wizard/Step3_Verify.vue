@@ -207,6 +207,7 @@ const handleProductChange = async (productId, row, index) => {
     ElMessage.warning(`商品已在第 ${duplicateIndex + 1} 行，请直接调整原行数量。`)
     row.product_id = null
     highlightRowIndex.value = duplicateIndex
+
     setTimeout(() => {
       if (highlightRowIndex.value === duplicateIndex) highlightRowIndex.value = -1
     }, 3000)
