@@ -8,6 +8,10 @@ export function createSale(data) {
   return http.post('/api/sales', data).then((r) => r.data)
 }
 
+export function updateQuote(id, payload) {
+  return http.put(`/api/sales/${id}/quote`, payload).then((r) => r.data)
+}
+
 export function convertToSale(id, payload) {
   return http.post(`/api/sales/${id}/convert_to_sale`, payload).then((r) => r.data)
 }
@@ -37,5 +41,13 @@ export function getSalePaymentRecords(saleId) {
 }
 
 export function exportSaleExcel(saleId, docType = 'sale') {
-  return http.get(`/api/sales/${saleId}/export_excel`, { params: { doc_type: docType }, responseType: "blob" }).then((r) => r.data)
+  return http.get(`/api/sales/${saleId}/export_excel`, { params: { doc_type: docType }, responseType: 'blob' }).then((r) => r.data)
+}
+
+export function previewSalePdfUrl(saleId, docType = 'sale') {
+  return `/api/sales/${saleId}/export_pdf?doc_type=${encodeURIComponent(docType)}`
+}
+
+export function downloadSalePdf(saleId, docType = 'sale') {
+  return http.get(`/api/sales/${saleId}/export_pdf`, { params: { doc_type: docType, download: true }, responseType: 'blob' }).then((r) => r.data)
 }
