@@ -50,7 +50,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { createSale } from '../../../api/sales'
+import { createSale, updateQuote } from '../../../api/sales'
 import { useSaleWizardStore } from '../../../stores/saleWizard'
 import { useSaleWizardDraft } from '../../../composables/useSaleWizardDraft'
 
@@ -90,10 +90,19 @@ const submitQuote = async () => {
       }))
     }
 
-    const sale = await createSale(payload)
+    const sale = wizardStore.editingQuoteId
+      ? await updateQuote(wizardStore.editingQuoteId, {
+          customer_id: payload.customer_id,
+          buyer_id: payload.buyer_id,
+          project: payload.project,
+          note: payload.note,
+          quote_updated_at: wizardStore.quoteUpdatedAt,
+          items: payload.items
+        })
+      : await createSale(payload)
     wizardStore.markSubmitted()
     wizardStore.clearDraft()
-    ElMessage.success('报价单提交成功')
+    ElMessage.success(wizardStore.editingQuoteId ? '报价单更新成功' : '报价单提交成功')
     router.push(`/sales/${sale.id}?from_submit=1`)
   } catch (error) {
     if (error !== 'cancel') ElMessage.error(error?.response?.data?.detail || '报价单提交失败')

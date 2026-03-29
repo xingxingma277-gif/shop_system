@@ -24,6 +24,8 @@ class Sale(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     sale_no: str = Field(default="", max_length=30, index=True, unique=True)
     customer_id: int = Field(foreign_key="customer.id", index=True)
+    source_quote_id: Optional[int] = Field(default=None, foreign_key="sale.id", index=True)
+    quote_status: Optional[str] = Field(default=None, max_length=20, index=True)
 
     buyer_id: Optional[int] = Field(default=None, foreign_key="customer_contact.id", index=True)
     contact_id: Optional[int] = Field(default=None, foreign_key="customer_contact.id", index=True)
@@ -60,6 +62,7 @@ class Sale(SQLModel, table=True):
     biz_status: str = Field(default="NORMAL", max_length=20, index=True)
 
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
 
     customer: Mapped[Optional["Customer"]] = Relationship(back_populates="sales")
     items: Mapped[list["SaleItem"]] = Relationship(

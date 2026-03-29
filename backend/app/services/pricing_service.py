@@ -4,7 +4,7 @@ from sqlmodel import Session, select
 
 from app.core.errors import NotFoundError
 from app.models import Customer, CustomerContact, Product, Sale, SaleItem
-from app.schemas.pricing import ProductTrendItem, PricingLastResponse
+from app.schemas.pricing import ProductTrendItem, PricingHistoryMeta, PricingHistoryResponse, PricingLastResponse
 
 
 def _parse_iso(v: str | None):
@@ -42,8 +42,11 @@ def last_pricing(session: Session, customer_id: int, product_id: int) -> Pricing
         found=True,
         standard_price=product.standard_price,
         last_price=si.unit_price or si.sold_price,
-        last_date=sale.sale_date,
+        last_sale_date=sale.sale_date,
+        last_sale_no=sale.sale_no,
         last_qty=si.qty,
+        source_order_type=sale.order_type,
+        source_stage=sale.order_stage,
     )
 
 
@@ -81,19 +84,21 @@ def pricing_history(session: Session, customer_id: int, product_id: int, *, page
 
     items = [
         {
-            "date": sale.sale_date,
-            "qty": si.qty,
-            "unit_price": si.unit_price or si.sold_price,
-            "sold_price": si.unit_price or si.sold_price,
             "sale_id": sale.id,
             "sale_no": sale.sale_no,
-            "project": sale.project,
-            "buyer_name": buyer.name if buyer else sale.contact_name_snapshot,
-            "note": si.remark,
+            "sale_date": sale.sale_date,
+            "order_type": sale.order_type,
+            "order_stage": sale.order_stage,
+            "qty": si.qty,
+            "unit_price": si.unit_price or si.sold_price,
         }
         for (si, sale, buyer) in rows
     ]
-    return items, total
+    pages = (total + page_size - 1) // page_size if total else 0
+    return PricingHistoryResponse(
+        items=items,
+        meta=PricingHistoryMeta(total=total, page=page, page_size=page_size, pages=pages),
+    )
 
 
 def product_trend(session: Session, product_id: int, limit: int = 50):

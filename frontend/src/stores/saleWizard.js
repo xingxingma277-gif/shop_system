@@ -19,6 +19,8 @@ const getDefaultState = () => ({
     payment_note: ''
   },
   sourceQuoteId: null,
+  editingQuoteId: null,
+  quoteUpdatedAt: null,
   isSubmitted: false,
   updatedAt: null
 })
@@ -71,6 +73,7 @@ export const useSaleWizardStore = defineStore('saleWizard', {
       if ((this.project || '').trim()) return true
       if ((this.remark || '').trim()) return true
       if (this.sourceQuoteId) return true
+      if (this.editingQuoteId) return true
       if (this.items.some((item) => item?.product_id || item?.qty || item?.actual_price)) return true
       return false
     },

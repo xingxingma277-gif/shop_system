@@ -66,8 +66,12 @@
             <span v-if="row.loadingHistory" class="loading-text">查询中...</span>
             <template v-else-if="row.last_price !== null && row.last_price !== undefined">
               <span class="history-price">¥ {{ Number(row.last_price).toFixed(2) }}</span>
-              <span class="history-sub">{{ row.last_sale_date ? formatDate(row.last_sale_date) : '时间未知' }}</span>
-              <el-button link type="primary" @click="openHistoryDialog(row)">查看历史记录</el-button>
+              <span class="history-sub">{{ row.last_sale_date ? formatDate(row.last_sale_date) : '时间未知' }} / {{ row.last_sale_no || '未知单号' }}</span>
+              <span class="history-sub" v-if="row.standard_price !== null && row.standard_price !== undefined">标准价：¥ {{ Number(row.standard_price).toFixed(2) }}</span>
+              <div>
+                <el-button link type="success" @click="applyLastPrice(row)">采用最近成交价</el-button>
+                <el-button link type="primary" @click="openHistoryDialog(row)">查看历史记录</el-button>
+              </div>
             </template>
             <span v-else style="color: #c0c4cc;">暂无历史成交</span>
           </div>
@@ -129,6 +133,12 @@
         <el-table-column prop="unit_price" label="成交价" width="120">
           <template #default="{ row }">¥ {{ Number(row.unit_price || 0).toFixed(2) }}</template>
         </el-table-column>
+        <el-table-column prop="qty" label="数量" width="100" />
+        <el-table-column label="操作" width="130">
+          <template #default="{ row }">
+            <el-button link type="success" @click="useHistoryPrice(row)">使用该价</el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </el-dialog>
   </div>
@@ -138,7 +148,7 @@
 import dayjs from 'dayjs'
 import { reactive, ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { useSaleWizardStore } from '../../../stores/saleWizard'
 import { useCatalogStore } from '../../../stores/catalog'
 import { useSaleWizardDraft } from '../../../composables/useSaleWizardDraft'
@@ -189,14 +199,12 @@ const loadLatestPrice = async (row, productId) => {
     return
   }
 
+  row.standard_price = latest.standard_price
   row.last_price = latest.last_price
   row.last_sale_date = latest.last_sale_date
   row.last_sale_no = latest.last_sale_no
   row.source_order_type = latest.source_order_type
-
-  if (latest.last_price !== null && latest.source_order_type !== 'quote') {
-    row.actual_price = latest.last_price
-  }
+  row.source_stage = latest.source_stage
 }
 
 const handleProductChange = async (productId, row, index) => {
@@ -240,6 +248,23 @@ const openHistoryDialog = async (row) => {
   historyDialog.visible = true
 }
 
+
+const applyLastPrice = (row) => {
+  if (row.last_price === null || row.last_price === undefined) return
+  row.actual_price = Number(row.last_price)
+  calculateTotal()
+  save()
+}
+
+const useHistoryPrice = (historyRow) => {
+  const target = formData.items.find((item) => item.product_name === historyDialog.productName)
+  if (!target) return
+  target.actual_price = Number(historyRow.unit_price || 0)
+  historyDialog.visible = false
+  calculateTotal()
+  save()
+}
+
 const addRow = () => {
   formData.items.push({ product_id: null, qty: 1, actual_price: 0 })
   save()
@@ -274,11 +299,7 @@ const goNext = () => {
     const overSells = validItems.filter((i) => i.qty > (i.stock_quantity || 0))
     if (overSells.length > 0) {
       const names = overSells.map((i) => i.product_name).join('、')
-      ElMessageBox.confirm(
-        `商品 ${names} 当前库存不足。若继续提交将产生超卖记录，是否继续？`,
-        '库存提醒',
-        { type: 'warning', confirmButtonText: '继续', cancelButtonText: '返回修改' }
-      ).then(() => proceedToNext(validItems)).catch(() => {})
+      ElMessage.warning(`商品 ${names} 当前库存不足，请改为报价单`)
       return
     }
   }
