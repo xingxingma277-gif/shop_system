@@ -13,6 +13,7 @@ from app.schemas.sale import (
     SaleCreate,
     DeliveryCreatePayload,
     QuoteConvertPayload,
+    QuoteUpdate,
     SaleOperationCreate,
     SalePage,
     SalePaymentCreate,
@@ -43,6 +44,18 @@ def create_sale(payload: SaleCreate, current: dict | None = Depends(auth_service
         raise HTTPException(status_code=400, detail=exc.message)
 
 
+
+
+@router.put("/{sale_id}/quote", response_model=SaleRead)
+def update_quote(sale_id: int, payload: QuoteUpdate, current: dict | None = Depends(auth_service.require_permissions('sale.manage')), session: Session = Depends(get_session)):
+    try:
+        sale = sale_service.update_quote(session, sale_id, payload)
+        if current:
+            audit_log_service.record(session, action='UPDATE', resource_type='sale', resource_id=sale.id, detail=f'编辑报价单 {sale.sale_no}', actor_user_id=current['id'], actor_name=current['display_name'])
+            session.commit()
+        return sale
+    except (NotFoundError, BadRequestError) as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
 @router.post("/{sale_id}/convert_to_sale", response_model=SaleRead)
 def convert_to_sale(sale_id: int, payload: QuoteConvertPayload | None = None, current: dict | None = Depends(auth_service.require_permissions('sale.manage')), session: Session = Depends(get_session)):
     try:
@@ -197,7 +210,7 @@ def export_sale_excel(sale_id: int, doc_type: str = "sale", _: dict | None = Dep
 
 
 @router.get("/{sale_id}/export_pdf")
-def export_sale_pdf(sale_id: int, doc_type: str = "sale", _: dict | None = Depends(auth_service.require_permissions('sale.view')), session: Session = Depends(get_session)):
+def export_sale_pdf(sale_id: int, doc_type: str = "sale", download: bool = False, _: dict | None = Depends(auth_service.require_permissions('sale.view')), session: Session = Depends(get_session)):
     try:
         print(f"====== 开始生成订单 {sale_id} 的 PDF ({doc_type}) ======")
         content = sale_export_service.export_sale_pdf(session, sale_id=sale_id, template_path=SALE_EXCEL_TEMPLATE_PATH, doc_type=doc_type)
@@ -220,7 +233,7 @@ def export_sale_pdf(sale_id: int, doc_type: str = "sale", _: dict | None = Depen
     return StreamingResponse(
         BytesIO(content),
         media_type="application/pdf",
-        headers={"Content-Disposition": f"inline; filename*=utf-8''{encoded_file_name}"},
+        headers={"Content-Disposition": f"{'attachment' if download else 'inline'}; filename*=utf-8''{encoded_file_name}"},
     )
 
 

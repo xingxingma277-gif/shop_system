@@ -29,6 +29,17 @@ class SaleCreate(SQLModel):
     payment_method: Optional[str] = None
     paid_amount: Optional[float] = None
     payment_note: Optional[str] = None
+    source_quote_id: Optional[int] = None
+    quote_updated_at: Optional[datetime] = None
+    items: List[SaleItemCreate]
+
+
+class QuoteUpdate(SQLModel):
+    customer_id: int
+    buyer_id: Optional[int] = None
+    project: Optional[str] = None
+    note: Optional[str] = None
+    quote_updated_at: datetime
     items: List[SaleItemCreate]
 
 
@@ -89,6 +100,10 @@ class SaleRead(SQLModel):
     buyer_id: Optional[int] = None
     buyer_name: Optional[str] = None
     project: Optional[str] = None
+    source_quote_id: Optional[int] = None
+    source_quote_no: Optional[str] = None
+    quote_status: Optional[str] = None
+    updated_at: datetime
 
     order_type: str
     order_stage: str
@@ -126,6 +141,10 @@ class SaleSummary(SQLModel):
     customer_name: str
     buyer_name: Optional[str] = None
     project: Optional[str] = None
+    source_quote_id: Optional[int] = None
+    source_quote_no: Optional[str] = None
+    quote_status: Optional[str] = None
+    updated_at: datetime
 
     order_type: str
     order_stage: str

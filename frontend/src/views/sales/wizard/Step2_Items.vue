@@ -25,11 +25,11 @@
         </div>
       </el-form-item>
 
-      <el-form-item label="拿货人" v-if="selectedCustomerType === 'company'">
+      <el-form-item label="拿货人" required v-if="selectedCustomerType === 'company'">
         <div style="display: flex; gap: 10px; width: 100%;">
           <el-select
             v-model="formData.buyerId"
-            placeholder="请选择拿货人（可选）"
+            placeholder="请选择拿货人（必填）"
             style="flex: 1;"
             clearable
             @change="handleBuyerChange"
@@ -190,6 +190,10 @@ const goPrev = () => {
 const goNext = () => {
   if (!formData.customer_id) {
     ElMessage.warning('请先选择客户')
+    return
+  }
+  if (selectedCustomerType.value === 'company' && !formData.buyerId) {
+    ElMessage.warning('公司客户必须选择拿货人')
     return
   }
 
